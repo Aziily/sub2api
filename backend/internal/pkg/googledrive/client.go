@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"net/url"
 	"strconv"
 	"strings"
@@ -95,4 +97,90 @@ func (c *Client) ListFiles(ctx context.Context, pageToken string, pageSize int) 
 	var result FilePage
 	err := c.get(ctx, "files", q, &result)
 	return &result, err
+}
+
+// Download returns the file's raw contents. The caller must close the body.
+// Native Google documents require an export operation and are not supported here.
+func (c *Client) Download(ctx context.Context, fileID string) (io.ReadCloser, error) {
+	if fileID == "" || strings.ContainsAny(fileID, "/\\?#") {
+		return nil, fmt.Errorf("invalid file ID")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"files/"+url.PathEscape(fileID)+"?alt=media", nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("Google Drive download failed: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return nil, &APIError{StatusCode: resp.StatusCode}
+	}
+	return resp.Body, nil
+}
+
+// Upload creates a file using Drive's multipart upload. Content is streamed;
+// callers must enforce their own size limit and cancel the context on failure.
+func (c *Client) Upload(ctx context.Context, name, parentID, contentType string, content io.Reader) (*File, error) {
+	if strings.TrimSpace(name) == "" || content == nil {
+		return nil, fmt.Errorf("file name and content are required")
+	}
+	if strings.ContainsAny(contentType, "\r\n") {
+		return nil, fmt.Errorf("invalid content type")
+	}
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	metadata := map[string]any{"name": name}
+	if parentID != "" {
+		metadata["parents"] = []string{parentID}
+	}
+	body, writer := io.Pipe()
+	defer body.Close()
+	multi := multipart.NewWriter(writer)
+	go func() {
+		defer writer.Close()
+		h := make(textproto.MIMEHeader)
+		h.Set("Content-Type", "application/json; charset=UTF-8")
+		part, err := multi.CreatePart(h)
+		if err == nil {
+			err = json.NewEncoder(part).Encode(metadata)
+		}
+		if err == nil {
+			h = make(textproto.MIMEHeader)
+			h.Set("Content-Type", contentType)
+			part, err = multi.CreatePart(h)
+		}
+		if err == nil {
+			_, err = io.Copy(part, content)
+		}
+		if err == nil {
+			err = multi.Close()
+		}
+		if err != nil {
+			_ = writer.CloseWithError(err)
+		}
+	}()
+	uploadBase := strings.TrimSuffix(c.base, "/drive/v3/") + "/upload/drive/v3/files?uploadType=multipart&fields=id,name,mimeType,size,modifiedTime"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uploadBase, body)
+	if err != nil {
+		body.Close()
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "multipart/related; boundary="+multi.Boundary())
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		body.Close()
+		return nil, fmt.Errorf("Google Drive upload failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		return nil, &APIError{StatusCode: resp.StatusCode}
+	}
+	var file File
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&file); err != nil {
+		return nil, fmt.Errorf("invalid Google Drive response: %w", err)
+	}
+	return &file, nil
 }
