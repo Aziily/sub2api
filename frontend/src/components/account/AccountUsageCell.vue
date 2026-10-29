@@ -297,7 +297,7 @@
       <!-- Usage data from API -->
       <div v-else-if="hasAntigravityQuotaFromAPI" class="space-y-1">
         <div v-for="model in priorityAntigravityQuotas" :key="model.label" :title="model.id || ''">
-          <UsageProgressBar v-if="model.quota" :label="model.label" :utilization="model.quota.utilization"
+          <UsageProgressBar v-if="model.quota" :label="model.label" label-width="auto" :utilization="model.quota.utilization"
             :resets-at="model.quota.reset_time || null" :color="model.color" />
           <div v-else class="text-xs text-gray-400">{{ model.label }} —</div>
         </div>
