@@ -274,10 +274,55 @@ func (s *GoogleDriveService) List(ctx context.Context, userID int64, dir string)
 	return out, nil
 }
 
+func validDriveName(name string) bool {
+	return name != "" && name != "." && name != ".." && !strings.ContainsAny(name, "/\\\x00")
+}
+
+// StartDirectUpload creates a Drive resumable session for dir/name so the
+// client can send the bytes straight to Google instead of through this
+// server. An existing file with that name is replaced in place.
+func (s *GoogleDriveService) StartDirectUpload(ctx context.Context, userID int64, dir, name, contentType string, size int64, origin string) (string, error) {
+	name = strings.TrimSpace(name)
+	if !validDriveName(name) || size < 0 {
+		return "", os.ErrInvalid
+	}
+	if size > s.maxBytes {
+		return "", googledrive.ErrTooLarge
+	}
+	c, root, err := s.client(ctx, userID)
+	if err != nil {
+		return "", err
+	}
+	dir = cleanDrivePath(dir)
+	parent, err := c.ResolvePath(ctx, root, dir)
+	if errors.Is(err, googledrive.ErrPathNotFound) {
+		return "", os.ErrNotExist
+	}
+	if err != nil {
+		return "", err
+	}
+	if parent.MimeType != googledrive.FolderMimeType {
+		return "", os.ErrNotExist
+	}
+	req := googledrive.UploadSessionRequest{Name: name, ParentID: parent.ID, ContentType: contentType, Size: size, Origin: origin}
+	existing, err := c.ResolvePath(ctx, root, path.Join(dir, name))
+	switch {
+	case errors.Is(err, googledrive.ErrPathNotFound):
+	case err != nil:
+		return "", err
+	case strings.HasPrefix(existing.MimeType, "application/vnd.google-apps."):
+		// Folders and native Docs/Sheets cannot receive raw content.
+		return "", ErrDriveIsFolder
+	default:
+		req.ReplaceID = existing.ID
+	}
+	return c.CreateUploadSession(ctx, req)
+}
+
 // Upload writes content to dir/name, replacing an existing file in place.
 func (s *GoogleDriveService) Upload(ctx context.Context, userID int64, dir, name string, content io.Reader) error {
 	name = strings.TrimSpace(name)
-	if name == "" || name == "." || name == ".." || strings.ContainsAny(name, "/\\\x00") {
+	if !validDriveName(name) {
 		return os.ErrInvalid
 	}
 	fsys, _, err := s.FileSystem(ctx, userID)

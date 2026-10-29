@@ -18,6 +18,7 @@ func registerGoogleDriveRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	g.GET("/users/:id/overview", h.Admin.GoogleDrive.Overview)
 	g.GET("/users/:id/files", h.Admin.GoogleDrive.Files)
 	g.POST("/users/:id/files", h.Admin.GoogleDrive.Upload)
+	g.POST("/users/:id/upload-sessions", h.Admin.GoogleDrive.UploadSession)
 	g.DELETE("/users/:id/files", h.Admin.GoogleDrive.Delete)
 	g.GET("/users/:id/download", h.Admin.GoogleDrive.Download)
 	g.POST("/users/:id/folders", h.Admin.GoogleDrive.Mkdir)
@@ -35,6 +36,9 @@ func RegisterGoogleDrivePublicRoutes(r *gin.Engine, h *handler.Handlers, apiKeyA
 		return
 	}
 	r.GET("/auth/drive/callback", h.Admin.GoogleDrive.Callback)
+	// Clients ask for a Google upload URL here and send the file bytes to
+	// Google directly, so uploads don't consume this server's bandwidth.
+	r.POST("/drive/v1/upload-sessions", gin.HandlerFunc(apiKeyAuth), middleware.DriveAPIKeyUsable(), h.Admin.GoogleDrive.UserUploadSession)
 	dav := r.Group("/webdav", middleware.WebDAVBasicCredentials(), gin.HandlerFunc(apiKeyAuth), middleware.WebDAVMatchUser())
 	for _, m := range webDAVMethods {
 		dav.Handle(m, "", h.Admin.GoogleDrive.WebDAV)

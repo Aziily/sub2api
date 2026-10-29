@@ -33,9 +33,25 @@ func WebDAVMatchUser() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		username := c.GetString(webDAVUsernameKey)
 		key, ok := GetAPIKeyFromContext(c)
-		// Simple mode's gateway middleware skips billing checks, including expiry.
-		// WebDAV credentials must still honor key expiry and quota status.
-		if !ok || key == nil || key.User == nil || !key.IsActive() || key.IsExpired() || key.IsQuotaExhausted() || !strings.EqualFold(username, key.User.Email) {
+		if !ok || !driveKeyUsable(c) || !strings.EqualFold(username, key.User.Email) {
+			c.AbortWithStatus(http.StatusUnauthorized)
+			return
+		}
+		c.Next()
+	}
+}
+
+// driveKeyUsable re-checks key state. Simple mode's gateway middleware skips
+// billing checks, including expiry, but Drive access must still honor them.
+func driveKeyUsable(c *gin.Context) bool {
+	key, ok := GetAPIKeyFromContext(c)
+	return ok && key != nil && key.User != nil && key.IsActive() && !key.IsExpired() && !key.IsQuotaExhausted()
+}
+
+// DriveAPIKeyUsable guards API-key Drive endpoints other than WebDAV.
+func DriveAPIKeyUsable() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !driveKeyUsable(c) {
 			c.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}

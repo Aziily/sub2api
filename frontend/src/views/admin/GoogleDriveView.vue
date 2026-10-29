@@ -116,6 +116,7 @@
             </label>
           </div>
         </div>
+        <p v-if="uploadStatus" class="mb-3 text-xs text-gray-500" data-testid="drive-upload-status">{{ uploadStatus }}</p>
 
         <nav class="mb-3 flex flex-wrap items-center gap-1 text-sm">
           <button type="button" class="text-blue-600 hover:underline" @click="go('/')">{{ t('admin.googleDrive.root') }}</button>
@@ -216,7 +217,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
-import driveAPI from '@/api/admin/googleDrive'
+import driveAPI, { DirectUploadError } from '@/api/admin/googleDrive'
 import type { DriveEntry, DriveOverview, DriveStatus, DriveUserStatus } from '@/api/admin/googleDrive'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -229,6 +230,7 @@ const driveStatus = ref<DriveStatus | null>(null)
 const loading = ref(false)
 const listing = ref(false)
 const busy = ref(false)
+const uploadStatus = ref('')
 const authUrl = ref('')
 const selected = ref<DriveUserStatus | null>(null)
 const overviewData = ref<DriveOverview | null>(null)
@@ -374,7 +376,18 @@ async function uploadFiles(event: Event) {
   busy.value = true
   try {
     for (const file of files) {
-      await driveAPI.upload(selected.value.user_id, currentPath.value, file)
+      const userId = selected.value.user_id
+      uploadStatus.value = t('admin.googleDrive.uploadingDirect', { name: file.name, percent: 0 })
+      try {
+        await driveAPI.uploadDirect(userId, currentPath.value, file, (fraction) => {
+          uploadStatus.value = t('admin.googleDrive.uploadingDirect', { name: file.name, percent: Math.floor(fraction * 100) })
+        })
+      } catch (err) {
+        // Browsers that cannot reach Google directly still upload via this server.
+        if (!(err instanceof DirectUploadError)) throw err
+        uploadStatus.value = t('admin.googleDrive.uploadingProxy', { name: file.name })
+        await driveAPI.upload(userId, currentPath.value, file)
+      }
     }
     appStore.showSuccess(t('admin.googleDrive.uploaded', { count: files.length }))
     await loadEntries()
@@ -382,6 +395,7 @@ async function uploadFiles(event: Event) {
     showError(err)
     await loadEntries()
   } finally {
+    uploadStatus.value = ''
     busy.value = false
   }
 }

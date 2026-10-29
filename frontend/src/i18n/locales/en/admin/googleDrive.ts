@@ -26,6 +26,8 @@ export default {
     newFolder: 'New folder',
     upload: 'Upload',
     uploaded: 'Uploaded {count} file(s)',
+    uploadingDirect: 'Uploading directly to Google Drive: {name} ({percent}%)',
+    uploadingProxy: 'Google is unreachable from this browser; uploading through the server: {name}',
     root: 'Root',
     name: 'Name',
     size: 'Size',

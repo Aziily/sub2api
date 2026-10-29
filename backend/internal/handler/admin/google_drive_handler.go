@@ -209,6 +209,64 @@ func (h *GoogleDriveHandler) Upload(c *gin.Context) {
 	}
 }
 
+type driveUploadSessionRequest struct {
+	Path     string `json:"path"`
+	Name     string `json:"name" binding:"required"`
+	Size     *int64 `json:"size" binding:"required"`
+	MimeType string `json:"mime_type"`
+}
+
+// requestOrigin returns the caller's browser origin, or "" for non-browser
+// clients. Google only accepts cross-origin PUTs from the session's origin.
+func requestOrigin(c *gin.Context) string {
+	o := c.GetHeader("Origin")
+	u, err := url.Parse(o)
+	if o == "" || err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.Path != "" || u.RawQuery != "" || u.User != nil {
+		return ""
+	}
+	return u.Scheme + "://" + u.Host
+}
+
+func (h *GoogleDriveHandler) startUploadSession(c *gin.Context, userID int64) {
+	var req driveUploadSessionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "name and size are required")
+		return
+	}
+	if req.Path == "" {
+		req.Path = "/"
+	}
+	uploadURL, err := h.svc.StartDirectUpload(c.Request.Context(), userID, req.Path, req.Name, req.MimeType, *req.Size, requestOrigin(c))
+	if err != nil {
+		h.fail(c, err)
+		return
+	}
+	// The URL can upload without further authentication; keep it out of caches.
+	c.Header("Cache-Control", "no-store")
+	response.Success(c, gin.H{"upload_url": uploadURL, "path": path.Join(path.Clean("/"+req.Path), req.Name)})
+}
+
+// UploadSession POST /api/v1/admin/google-drive/users/:id/upload-sessions
+// returns a Google resumable upload URL; the client PUTs the bytes to Google.
+func (h *GoogleDriveHandler) UploadSession(c *gin.Context) {
+	userID, ok := userIDParam(c)
+	if !ok {
+		return
+	}
+	h.startUploadSession(c, userID)
+}
+
+// UserUploadSession POST /drive/v1/upload-sessions does the same for the user
+// that owns the authenticated API key.
+func (h *GoogleDriveHandler) UserUploadSession(c *gin.Context) {
+	key, ok := middleware2.GetAPIKeyFromContext(c)
+	if !ok || key == nil || key.User == nil {
+		c.AbortWithStatus(http.StatusUnauthorized)
+		return
+	}
+	h.startUploadSession(c, key.User.ID)
+}
+
 // Download GET /api/v1/admin/google-drive/users/:id/download?path=/a.txt
 func (h *GoogleDriveHandler) Download(c *gin.Context) {
 	userID, ok := userIDParam(c)

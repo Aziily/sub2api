@@ -26,6 +26,8 @@ export default {
     newFolder: '新建文件夹',
     upload: '上传',
     uploaded: '已上传 {count} 个文件',
+    uploadingDirect: '正在从浏览器直传到 Google Drive：{name}（{percent}%）',
+    uploadingProxy: '浏览器无法直连 Google，改为经服务器上传：{name}',
     root: '根目录',
     name: '名称',
     size: '大小',
