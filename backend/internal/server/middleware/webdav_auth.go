@@ -33,7 +33,9 @@ func WebDAVMatchUser() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		username := c.GetString(webDAVUsernameKey)
 		key, ok := GetAPIKeyFromContext(c)
-		if !ok || key == nil || key.User == nil || !strings.EqualFold(username, key.User.Email) {
+		// Simple mode's gateway middleware skips billing checks, including expiry.
+		// WebDAV credentials must still honor key expiry and quota status.
+		if !ok || key == nil || key.User == nil || !key.IsActive() || key.IsExpired() || key.IsQuotaExhausted() || !strings.EqualFold(username, key.User.Email) {
 			c.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}
