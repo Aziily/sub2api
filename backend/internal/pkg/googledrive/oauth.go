@@ -105,6 +105,31 @@ func (o *OAuthFlow) Exchange(ctx context.Context, actorID, userID int64, state, 
 	}
 	return o.token(ctx, url.Values{"code": {code}, "client_id": {o.config.ClientID}, "client_secret": {o.config.ClientSecret}, "redirect_uri": {o.config.RedirectURI}, "code_verifier": {session.verifier}, "grant_type": {"authorization_code"}})
 }
+
+// ExchangeByState completes an authorization using only the one-time state.
+// The state was issued to an authenticated administrator and is bound to the
+// target user, so possession of an unexpired, unused state authorizes the
+// exchange. This lets the browser redirect complete server-side without
+// relying on the administrator's browser session or origin.
+func (o *OAuthFlow) ExchangeByState(ctx context.Context, state, code string) (actorID, userID int64, token *Token, err error) {
+	if state == "" || code == "" {
+		return 0, 0, nil, errors.New("invalid or expired authorization session")
+	}
+	o.mu.Lock()
+	session, ok := o.sessions[state]
+	if ok {
+		delete(o.sessions, state)
+	}
+	o.mu.Unlock()
+	if !ok || time.Now().After(session.expires) {
+		return 0, 0, nil, errors.New("invalid or expired authorization session")
+	}
+	token, err = o.token(ctx, url.Values{"code": {code}, "client_id": {o.config.ClientID}, "client_secret": {o.config.ClientSecret}, "redirect_uri": {o.config.RedirectURI}, "code_verifier": {session.verifier}, "grant_type": {"authorization_code"}})
+	if err != nil {
+		return 0, 0, nil, err
+	}
+	return session.actorID, session.userID, token, nil
+}
 func (o *OAuthFlow) Refresh(ctx context.Context, refreshToken string) (*Token, error) {
 	if refreshToken == "" {
 		return nil, errors.New("missing refresh token")

@@ -18,7 +18,7 @@ func TestAboutAndListFiles(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/about":
-			if r.URL.Query().Get("fields") != "storageQuota" {
+			if r.URL.Query().Get("fields") != "storageQuota,user(emailAddress,displayName)" {
 				t.Error("missing fields")
 			}
 			fmt.Fprint(w, `{"storageQuota":{"limit":"100","usage":"30","usageInDrive":"20"}}`)

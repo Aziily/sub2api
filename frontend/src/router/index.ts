@@ -562,6 +562,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/google-drive',
+    name: 'AdminGoogleDrive',
+    component: () => import('@/views/admin/GoogleDriveView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Google Drive',
+      titleKey: 'admin.googleDrive.title',
+      descriptionKey: 'admin.googleDrive.description'
+    }
+  },
+  {
     path: '/admin/redeem',
     name: 'AdminRedeem',
     component: () => import('@/views/admin/RedeemView.vue'),

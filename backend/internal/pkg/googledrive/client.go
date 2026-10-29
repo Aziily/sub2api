@@ -40,6 +40,10 @@ type StorageQuota struct {
 }
 type About struct {
 	StorageQuota StorageQuota `json:"storageQuota"`
+	User         struct {
+		EmailAddress string `json:"emailAddress"`
+		DisplayName  string `json:"displayName"`
+	} `json:"user"`
 }
 type File struct {
 	ID           string   `json:"id"`
@@ -83,7 +87,7 @@ func (c *Client) get(ctx context.Context, path string, params url.Values, dst an
 
 func (c *Client) About(ctx context.Context) (*About, error) {
 	var result About
-	err := c.get(ctx, "about", url.Values{"fields": {"storageQuota"}}, &result)
+	err := c.get(ctx, "about", url.Values{"fields": {"storageQuota,user(emailAddress,displayName)"}}, &result)
 	return &result, err
 }
 
@@ -300,6 +304,41 @@ func (c *Client) Upload(ctx context.Context, name, parentID, contentType string,
 	var file File
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&file); err != nil {
 		return nil, fmt.Errorf("invalid Google Drive response: %w", err)
+	}
+	return &file, nil
+}
+
+// Move renames a file and/or moves it from oldParentID to newParentID in a
+// single request. Pass equal parent IDs to rename in place.
+func (c *Client) Move(ctx context.Context, fileID, newName, oldParentID, newParentID string) (*File, error) {
+	if !validID(fileID) || !validID(oldParentID) || !validID(newParentID) || strings.TrimSpace(newName) == "" {
+		return nil, fmt.Errorf("invalid move request")
+	}
+	q := url.Values{"fields": {"id,name,mimeType,size,modifiedTime,parents"}}
+	if oldParentID != newParentID {
+		q.Set("addParents", newParentID)
+		q.Set("removeParents", oldParentID)
+	}
+	data, err := json.Marshal(map[string]string{"name": newName})
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, c.base+"files/"+url.PathEscape(fileID)+"?"+q.Encode(), strings.NewReader(string(data)))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("Google Drive request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, &APIError{StatusCode: resp.StatusCode}
+	}
+	var file File
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&file); err != nil {
+		return nil, errors.New("invalid Google Drive response")
 	}
 	return &file, nil
 }

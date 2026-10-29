@@ -859,6 +859,8 @@ func ProvideAPIKeyService(
 var ProviderSet = wire.NewSet(
 	// Core services
 	ProvideAuthService,
+	NewDriveConnectionStore,
+	ProvideGoogleDriveService,
 	NewPasskeyService,
 	NewUserService,
 	ProvideAPIKeyService,

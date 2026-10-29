@@ -157,6 +157,8 @@ var auditBodyOmittedRoutes = map[string]struct{}{
 	"POST /api/v1/admin/prompt-audit/events/batch-delete":       {},
 	"POST /api/v1/admin/prompt-audit/events/delete-preview":     {},
 	"POST /api/v1/admin/prompt-audit/events/delete-by-filter":   {},
+	// Google Drive uploads carry user file contents, not structured settings.
+	"POST /api/v1/admin/google-drive/users/:id/files": {},
 }
 
 // NewAuditLogMiddleware 创建审计中间件。
