@@ -33,7 +33,7 @@ func TestOAuthStatePKCEAndRefresh(t *testing.T) {
 		t.Fatal(err)
 	}
 	flow.tokenURL = server.URL
-	auth, err := flow.Start(12)
+	auth, err := flow.Start(5, 12)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,13 +42,16 @@ func TestOAuthStatePKCEAndRefresh(t *testing.T) {
 	if state == "" || parsed.Query().Get("code_challenge_method") != "S256" || parsed.Query().Get("scope") != DriveFileScope {
 		t.Fatal("missing OAuth parameters")
 	}
-	if _, err = flow.Exchange(context.Background(), 13, state, "code"); err == nil {
+	if _, err = flow.Exchange(context.Background(), 5, 13, state, "code"); err == nil {
 		t.Fatal("wrong user accepted")
 	}
-	if _, err = flow.Exchange(context.Background(), 12, state, "code"); err != nil {
+	if _, err = flow.Exchange(context.Background(), 6, 12, state, "code"); err == nil {
+		t.Fatal("wrong administrator accepted")
+	}
+	if _, err = flow.Exchange(context.Background(), 5, 12, state, "code"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = flow.Exchange(context.Background(), 12, state, "code"); err == nil {
+	if _, err = flow.Exchange(context.Background(), 5, 12, state, "code"); err == nil {
 		t.Fatal("reused state accepted")
 	}
 	if _, err = flow.Refresh(context.Background(), "refresh"); err != nil {

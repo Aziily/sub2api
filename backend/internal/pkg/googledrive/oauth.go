@@ -24,6 +24,7 @@ type OAuthConfig struct{ ClientID, ClientSecret, RedirectURI string }
 type oauthSession struct {
 	verifier string
 	userID   int64
+	actorID  int64
 	expires  time.Time
 }
 type OAuthFlow struct {
@@ -63,8 +64,8 @@ func randomString() (string, error) {
 }
 
 // Start binds the one-time state to the Sub2API user and expires it after ten minutes.
-func (o *OAuthFlow) Start(userID int64) (string, error) {
-	if userID <= 0 {
+func (o *OAuthFlow) Start(actorID, userID int64) (string, error) {
+	if actorID <= 0 || userID <= 0 {
 		return "", errors.New("invalid user")
 	}
 	state, err := randomString()
@@ -86,20 +87,20 @@ func (o *OAuthFlow) Start(userID int64) (string, error) {
 		o.mu.Unlock()
 		return "", errors.New("too many pending authorization sessions")
 	}
-	o.sessions[state] = oauthSession{verifier: verifier, userID: userID, expires: time.Now().Add(10 * time.Minute)}
+	o.sessions[state] = oauthSession{verifier: verifier, userID: userID, actorID: actorID, expires: time.Now().Add(10 * time.Minute)}
 	o.mu.Unlock()
 	q := url.Values{"client_id": {o.config.ClientID}, "redirect_uri": {o.config.RedirectURI}, "response_type": {"code"}, "scope": {DriveFileScope}, "access_type": {"offline"}, "prompt": {"consent"}, "state": {state}, "code_challenge": {base64.RawURLEncoding.EncodeToString(sum[:])}, "code_challenge_method": {"S256"}}
 	return googleAuthEndpoint + "?" + q.Encode(), nil
 }
 
-func (o *OAuthFlow) Exchange(ctx context.Context, userID int64, state, code string) (*Token, error) {
+func (o *OAuthFlow) Exchange(ctx context.Context, actorID, userID int64, state, code string) (*Token, error) {
 	o.mu.Lock()
 	session, ok := o.sessions[state]
-	if ok && session.userID == userID {
+	if ok && session.userID == userID && session.actorID == actorID {
 		delete(o.sessions, state)
 	}
 	o.mu.Unlock()
-	if !ok || session.userID != userID || time.Now().After(session.expires) || code == "" {
+	if !ok || session.userID != userID || session.actorID != actorID || time.Now().After(session.expires) || code == "" {
 		return nil, errors.New("invalid or expired authorization session")
 	}
 	return o.token(ctx, url.Values{"code": {code}, "client_id": {o.config.ClientID}, "client_secret": {o.config.ClientSecret}, "redirect_uri": {o.config.RedirectURI}, "code_verifier": {session.verifier}, "grant_type": {"authorization_code"}})
