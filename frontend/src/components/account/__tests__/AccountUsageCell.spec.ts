@@ -407,6 +407,27 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).not.toContain('-')
   })
 
+  it('shows each new model quota and its own reset time, including unknown models', async () => {
+    getUsage.mockResolvedValue({ antigravity_quota: {
+      'gemini-4-argon-high': { utilization: 21, reset_time: '2026-11-05T11:32:02Z' },
+      'gemini-4-argon-medium': { utilization: 12, reset_time: '2026-10-29T16:31:58Z' },
+      'claude-opus-5-5-medium': { utilization: 34, reset_time: '2026-10-29T16:32:08Z' },
+      'future-model': { utilization: 5, reset_time: '' }
+    } })
+    const wrapper = mount(AccountUsageCell, {
+      props: { account: makeAccount({ extra: {} }) },
+      global: { stubs: {
+        UsageProgressBar: { props: ['label', 'utilization', 'resetsAt'], template: '<div>{{ label }}|{{ utilization }}|{{ resetsAt }}</div>' },
+        AccountQuotaInfo: true
+      } }
+    })
+    await flushPromises()
+    expect(wrapper.text()).toContain('G4 H|21|2026-11-05T11:32:02Z')
+    expect(wrapper.text()).toContain('G4 M|12|2026-10-29T16:31:58Z')
+    expect(wrapper.text()).toContain('O55 M|34|2026-10-29T16:32:08Z')
+    expect(wrapper.text()).toContain('future-model')
+  })
+
   it('Antigravity 图片用量会聚合新旧 image 模型', async () => {
     getUsage.mockResolvedValue({
       antigravity_quota: {

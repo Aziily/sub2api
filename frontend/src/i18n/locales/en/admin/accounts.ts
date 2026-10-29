@@ -1707,6 +1707,8 @@ export default {
         noData: 'No usage data available for this account'
       },
       usageWindow: {
+        modelWindowsShared: 'Model windows (quota may be shared)',
+        allModels: 'Other model quotas',
         statsTitle: '5-Hour Window Usage Statistics',
         statsTitleDaily: 'Daily Usage Statistics',
         geminiProDaily: 'Pro',

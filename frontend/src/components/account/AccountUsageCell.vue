@@ -296,6 +296,17 @@
 
       <!-- Usage data from API -->
       <div v-else-if="hasAntigravityQuotaFromAPI" class="space-y-1">
+        <div v-if="priorityAntigravityQuotas.length" class="text-[10px] text-gray-500 dark:text-gray-400">
+          {{ t('admin.accounts.usageWindow.modelWindowsShared') }}
+        </div>
+        <div v-for="model in priorityAntigravityQuotas" :key="model.id" :title="model.id">
+          <UsageProgressBar
+            :label="model.label"
+            :utilization="model.utilization"
+            :resets-at="model.resetTime"
+            :color="model.color"
+          />
+        </div>
         <!-- Gemini 3 Pro -->
         <UsageProgressBar
           v-if="antigravity3ProUsageFromAPI !== null"
@@ -331,6 +342,14 @@
           :resets-at="antigravityClaudeUsageFromAPI.resetTime"
           color="amber"
         />
+
+        <details v-if="otherAntigravityQuotas.length" class="text-[10px] text-gray-500 dark:text-gray-400">
+          <summary class="cursor-pointer">{{ t('admin.accounts.usageWindow.allModels') }}</summary>
+          <div v-for="model in otherAntigravityQuotas" :key="model.id" class="mt-1" :title="model.id">
+            <div class="break-all">{{ model.id }}</div>
+            <UsageProgressBar :label="'%'" :utilization="model.utilization" :resets-at="model.resetTime" color="indigo" />
+          </div>
+        </details>
 
         <div v-if="aiCreditsDisplay" class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
           💳 {{ t('admin.accounts.aiCreditsBalance') }}: {{ aiCreditsDisplay }}
@@ -884,6 +903,29 @@ interface AntigravityUsageResult {
   utilization: number
   resetTime: string | null
 }
+
+const priorityAntigravityModels = [
+  { id: 'gemini-4-argon-high', label: 'G4 H', color: 'indigo' as const },
+  { id: 'gemini-4-argon-medium', label: 'G4 M', color: 'indigo' as const },
+  { id: 'gemini-4-argon-low', label: 'G4 L', color: 'indigo' as const },
+  { id: 'claude-opus-5-5-high', label: 'O55 H', color: 'amber' as const },
+  { id: 'claude-opus-5-5-medium', label: 'O55 M', color: 'amber' as const },
+  { id: 'claude-opus-5-5-low', label: 'O55 L', color: 'amber' as const }
+]
+const priorityAntigravityQuotas = computed(() => {
+  const quotas = usageInfo.value?.antigravity_quota ?? {}
+  return priorityAntigravityModels.flatMap((model) => {
+    const quota = quotas[model.id]
+    return quota ? [{ ...model, utilization: quota.utilization, resetTime: quota.reset_time || null }] : []
+  })
+})
+const otherAntigravityQuotas = computed(() => {
+  const priorityIds = new Set(priorityAntigravityModels.map((model) => model.id))
+  return Object.entries(usageInfo.value?.antigravity_quota ?? {})
+    .filter(([id]) => !priorityIds.has(id))
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([id, quota]) => ({ id, utilization: quota.utilization, resetTime: quota.reset_time || null }))
+})
 
 // ===== Antigravity quota from API (usageInfo.antigravity_quota) =====
 

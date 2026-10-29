@@ -512,6 +512,8 @@ export default {
         }
       },
       usageWindow: {
+        modelWindowsShared: '模型窗口（可能共享额度）',
+        allModels: '其他模型用量',
         statsTitle: '5小时窗口用量统计',
         statsTitleDaily: '每日用量统计',
         geminiProDaily: 'Pro',
