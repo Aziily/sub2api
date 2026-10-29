@@ -24,8 +24,8 @@ func TestDriveConnectionStoreScopesAndEncryptsCredentials(t *testing.T) {
 	}
 	defer db.Close()
 	store := NewDriveConnectionStore(db, driveTestEncryptor{})
-	mock.ExpectExec("INSERT INTO google_drive_connections").WithArgs(int64(42), "Murat", "encrypted:refresh").WillReturnResult(sqlmock.NewResult(0, 1))
-	if err := store.Save(context.Background(), 42, "Murat", "refresh"); err != nil {
+	mock.ExpectExec("INSERT INTO google_drive_connections").WithArgs(int64(42), "Murat", "encrypted:refresh", "root42").WillReturnResult(sqlmock.NewResult(0, 1))
+	if err := store.Save(context.Background(), 42, "Murat", "refresh", "root42"); err != nil {
 		t.Fatal(err)
 	}
 	mock.ExpectQuery("SELECT refresh_token_encrypted FROM google_drive_connections WHERE user_id=\\$1").WithArgs(int64(42)).WillReturnRows(sqlmock.NewRows([]string{"refresh_token_encrypted"}).AddRow("encrypted:refresh"))

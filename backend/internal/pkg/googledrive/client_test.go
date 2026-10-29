@@ -61,6 +61,89 @@ func TestErrorDoesNotExposeResponseBody(t *testing.T) {
 	}
 }
 
+func TestListChildrenRestrictsQueryToParent(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("q") != "trashed = false and 'folder_123' in parents" || r.URL.Query().Get("pageToken") != "next" {
+			t.Error("unexpected folder query")
+		}
+		fmt.Fprint(w, `{"files":[{"id":"child","name":"file","parents":["folder_123"]}]}`)
+	}))
+	defer server.Close()
+	c := NewClient(server.Client())
+	c.base = server.URL + "/"
+	page, err := c.ListChildren(context.Background(), "folder_123", "next", 10)
+	if err != nil || len(page.Files) != 1 || page.Files[0].Parents[0] != "folder_123" {
+		t.Fatal("folder listing failed")
+	}
+	if _, err := c.ListChildren(context.Background(), "x' or trashed = false", "", 10); err == nil {
+		t.Fatal("accepted query injection")
+	}
+}
+
+func TestCreateAndTrashFolder(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && r.URL.Path == "/files" {
+			var meta struct {
+				Name     string   `json:"name"`
+				MimeType string   `json:"mimeType"`
+				Parents  []string `json:"parents"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&meta); err != nil || meta.Name != "folder" || meta.MimeType != "application/vnd.google-apps.folder" || len(meta.Parents) != 1 || meta.Parents[0] != "root" {
+				t.Error("invalid folder metadata")
+			}
+			fmt.Fprint(w, `{"id":"folder1","name":"folder"}`)
+			return
+		}
+		if r.Method == http.MethodPatch && r.URL.Path == "/files/folder1" {
+			var data map[string]bool
+			if err := json.NewDecoder(r.Body).Decode(&data); err != nil || !data["trashed"] {
+				t.Error("file was not trashed")
+			}
+			fmt.Fprint(w, `{}`)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+	c := NewClient(server.Client())
+	c.base = server.URL + "/"
+	folder, err := c.CreateFolder(context.Background(), "folder", "root")
+	if err != nil || folder.ID != "folder1" {
+		t.Fatal("folder creation failed")
+	}
+	if err := c.Trash(context.Background(), folder.ID); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestReplaceContentAndMetadata(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPatch && r.URL.Path == "/upload/drive/v3/files/file1":
+			content, _ := io.ReadAll(r.Body)
+			if string(content) != "replacement" || r.URL.Query().Get("uploadType") != "media" {
+				t.Error("invalid replacement")
+			}
+			fmt.Fprint(w, `{"id":"file1","size":"11"}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/drive/v3/files/file1":
+			fmt.Fprint(w, `{"id":"file1","parents":["root"]}`)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	c := NewClient(server.Client())
+	c.base = server.URL + "/drive/v3/"
+	f, err := c.ReplaceContent(context.Background(), "file1", "text/plain", strings.NewReader("replacement"))
+	if err != nil || f.ID != "file1" {
+		t.Fatal("replacement failed")
+	}
+	f, err = c.GetFile(context.Background(), "file1")
+	if err != nil || len(f.Parents) != 1 || f.Parents[0] != "root" {
+		t.Fatal("metadata failed")
+	}
+}
+
 func TestUploadAndDownload(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {

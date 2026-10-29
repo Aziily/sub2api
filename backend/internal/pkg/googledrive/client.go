@@ -5,6 +5,7 @@ package googledrive
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -41,11 +42,12 @@ type About struct {
 	StorageQuota StorageQuota `json:"storageQuota"`
 }
 type File struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	MimeType     string `json:"mimeType"`
-	Size         *int64 `json:"size,string"`
-	ModifiedTime string `json:"modifiedTime"`
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
+	MimeType     string   `json:"mimeType"`
+	Size         *int64   `json:"size,string"`
+	ModifiedTime string   `json:"modifiedTime"`
+	Parents      []string `json:"parents,omitempty"`
 }
 type FilePage struct {
 	Files         []File `json:"files"`
@@ -99,10 +101,127 @@ func (c *Client) ListFiles(ctx context.Context, pageToken string, pageSize int) 
 	return &result, err
 }
 
+// ListChildren returns a page of non-trashed files in a single Drive folder.
+func (c *Client) ListChildren(ctx context.Context, parentID, pageToken string, pageSize int) (*FilePage, error) {
+	if !validID(parentID) || pageSize < 1 || pageSize > 100 {
+		return nil, fmt.Errorf("invalid folder ID or page size")
+	}
+	q := url.Values{"fields": {"nextPageToken,files(id,name,mimeType,size,modifiedTime,parents)"}, "pageSize": {strconv.Itoa(pageSize)}, "q": {"trashed = false and '" + parentID + "' in parents"}}
+	if pageToken != "" {
+		q.Set("pageToken", pageToken)
+	}
+	var result FilePage
+	err := c.get(ctx, "files", q, &result)
+	return &result, err
+}
+
+// GetFile returns metadata for a file accessible under the granted scope.
+func (c *Client) GetFile(ctx context.Context, fileID string) (*File, error) {
+	if !validID(fileID) {
+		return nil, fmt.Errorf("invalid file ID")
+	}
+	var file File
+	err := c.get(ctx, "files/"+url.PathEscape(fileID), url.Values{"fields": {"id,name,mimeType,size,modifiedTime,parents"}}, &file)
+	return &file, err
+}
+
+// ReplaceContent updates the contents of an existing non-native Drive file.
+func (c *Client) ReplaceContent(ctx context.Context, fileID, contentType string, content io.Reader) (*File, error) {
+	if !validID(fileID) || content == nil || strings.ContainsAny(contentType, "\r\n") {
+		return nil, fmt.Errorf("invalid file or content")
+	}
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	endpoint := strings.TrimSuffix(c.base, "/drive/v3/") + "/upload/drive/v3/files/" + url.PathEscape(fileID) + "?uploadType=media&fields=id,name,mimeType,size,modifiedTime,parents"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, endpoint, content)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", contentType)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("Google Drive request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, &APIError{StatusCode: resp.StatusCode}
+	}
+	var file File
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&file); err != nil {
+		return nil, errors.New("invalid Google Drive response")
+	}
+	return &file, nil
+}
+
+// Drive IDs are opaque ASCII identifiers. Restrict them before placing one
+// in either a URL path or a Drive query expression.
+func validID(id string) bool {
+	if id == "" {
+		return false
+	}
+	for _, c := range id {
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_') {
+			return false
+		}
+	}
+	return true
+}
+
+// CreateFolder creates an application-owned folder in the specified parent.
+func (c *Client) CreateFolder(ctx context.Context, name, parentID string) (*File, error) {
+	if strings.TrimSpace(name) == "" || !validID(parentID) {
+		return nil, fmt.Errorf("invalid folder name or parent")
+	}
+	data, err := json.Marshal(map[string]any{"name": name, "parents": []string{parentID}, "mimeType": "application/vnd.google-apps.folder"})
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"files?fields=id,name,mimeType,parents,modifiedTime", strings.NewReader(string(data)))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("Google Drive request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		return nil, &APIError{StatusCode: resp.StatusCode}
+	}
+	var file File
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&file); err != nil {
+		return nil, errors.New("invalid Google Drive response")
+	}
+	return &file, nil
+}
+
+// Trash moves a file to Drive's recoverable trash.
+func (c *Client) Trash(ctx context.Context, fileID string) error {
+	if !validID(fileID) {
+		return fmt.Errorf("invalid file ID")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, c.base+"files/"+url.PathEscape(fileID), strings.NewReader(`{"trashed":true}`))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("Google Drive request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return &APIError{StatusCode: resp.StatusCode}
+	}
+	return nil
+}
+
 // Download returns the file's raw contents. The caller must close the body.
 // Native Google documents require an export operation and are not supported here.
 func (c *Client) Download(ctx context.Context, fileID string) (io.ReadCloser, error) {
-	if fileID == "" || strings.ContainsAny(fileID, "/\\?#") {
+	if !validID(fileID) {
 		return nil, fmt.Errorf("invalid file ID")
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"files/"+url.PathEscape(fileID)+"?alt=media", nil)
