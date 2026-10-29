@@ -407,12 +407,12 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).not.toContain('-')
   })
 
-  it('shows each new model quota and its own reset time, including unknown models', async () => {
+  it('shows one real upstream window per requested model and leaves missing models blank', async () => {
     getUsage.mockResolvedValue({ antigravity_quota: {
       'gemini-4-argon-high': { utilization: 21, reset_time: '2026-11-05T11:32:02Z' },
       'gemini-4-argon-medium': { utilization: 12, reset_time: '2026-10-29T16:31:58Z' },
       'claude-opus-5-5-medium': { utilization: 34, reset_time: '2026-10-29T16:32:08Z' },
-      'future-model': { utilization: 5, reset_time: '' }
+      'gemini-3-flash': { utilization: 5, reset_time: '' }
     } })
     const wrapper = mount(AccountUsageCell, {
       props: { account: makeAccount({ extra: {} }) },
@@ -422,53 +422,10 @@ describe('AccountUsageCell', () => {
       } }
     })
     await flushPromises()
-    expect(wrapper.text()).toContain('G4 H|21|2026-11-05T11:32:02Z')
-    expect(wrapper.text()).toContain('G4 M|12|2026-10-29T16:31:58Z')
-    expect(wrapper.text()).toContain('O55 M|34|2026-10-29T16:32:08Z')
-    expect(wrapper.text()).toContain('future-model')
-  })
-
-  it('Antigravity 图片用量会聚合新旧 image 模型', async () => {
-    getUsage.mockResolvedValue({
-      antigravity_quota: {
-        'gemini-2.5-flash-image': {
-          utilization: 45,
-          reset_time: '2026-03-01T11:00:00Z'
-        },
-        'gemini-3.1-flash-image': {
-          utilization: 20,
-          reset_time: '2026-03-01T10:00:00Z'
-        },
-        'gemini-3-pro-image': {
-          utilization: 70,
-          reset_time: '2026-03-01T09:00:00Z'
-        }
-      }
-    })
-
-    const wrapper = mount(AccountUsageCell, {
-      props: {
-        account: makeAccount({
-          id: 1001,
-          platform: 'antigravity',
-          type: 'oauth',
-          extra: {}
-        })
-      },
-      global: {
-        stubs: {
-          UsageProgressBar: {
-            props: ['label', 'utilization', 'resetsAt', 'color'],
-            template: '<div class="usage-bar">{{ label }}|{{ utilization }}|{{ resetsAt }}</div>'
-          },
-          AccountQuotaInfo: true
-        }
-      }
-    })
-
-    await flushPromises()
-
-    expect(wrapper.text()).toContain('admin.accounts.usageWindow.gemini3Image|70|2026-03-01T09:00:00Z')
+    expect(wrapper.text()).toContain('Gemini 4|21|2026-11-05T11:32:02Z')
+    expect(wrapper.text()).toContain('Opus 5.5|34|2026-10-29T16:32:08Z')
+    expect(wrapper.text()).toContain('3.8 Flash —')
+    expect(wrapper.text()).not.toContain('gemini-3-flash')
   })
 
   it('Antigravity 会显示 AI Credits 余额信息', async () => {

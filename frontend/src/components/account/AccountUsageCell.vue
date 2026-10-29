@@ -296,60 +296,11 @@
 
       <!-- Usage data from API -->
       <div v-else-if="hasAntigravityQuotaFromAPI" class="space-y-1">
-        <div v-if="priorityAntigravityQuotas.length" class="text-[10px] text-gray-500 dark:text-gray-400">
-          {{ t('admin.accounts.usageWindow.modelWindowsShared') }}
+        <div v-for="model in priorityAntigravityQuotas" :key="model.label" :title="model.id || ''">
+          <UsageProgressBar v-if="model.quota" :label="model.label" :utilization="model.quota.utilization"
+            :resets-at="model.quota.reset_time || null" :color="model.color" />
+          <div v-else class="text-xs text-gray-400">{{ model.label }} —</div>
         </div>
-        <div v-for="model in priorityAntigravityQuotas" :key="model.id" :title="model.id">
-          <UsageProgressBar
-            :label="model.label"
-            :utilization="model.utilization"
-            :resets-at="model.resetTime"
-            :color="model.color"
-          />
-        </div>
-        <!-- Gemini 3 Pro -->
-        <UsageProgressBar
-          v-if="antigravity3ProUsageFromAPI !== null"
-          :label="t('admin.accounts.usageWindow.gemini3Pro')"
-          :utilization="antigravity3ProUsageFromAPI.utilization"
-          :resets-at="antigravity3ProUsageFromAPI.resetTime"
-          color="indigo"
-        />
-
-        <!-- Gemini 3 Flash -->
-        <UsageProgressBar
-          v-if="antigravity3FlashUsageFromAPI !== null"
-          :label="t('admin.accounts.usageWindow.gemini3Flash')"
-          :utilization="antigravity3FlashUsageFromAPI.utilization"
-          :resets-at="antigravity3FlashUsageFromAPI.resetTime"
-          color="emerald"
-        />
-
-        <!-- Gemini 3 Image -->
-        <UsageProgressBar
-          v-if="antigravity3ImageUsageFromAPI !== null"
-          :label="t('admin.accounts.usageWindow.gemini3Image')"
-          :utilization="antigravity3ImageUsageFromAPI.utilization"
-          :resets-at="antigravity3ImageUsageFromAPI.resetTime"
-          color="purple"
-        />
-
-        <!-- Claude -->
-        <UsageProgressBar
-          v-if="antigravityClaudeUsageFromAPI !== null"
-          :label="t('admin.accounts.usageWindow.claude')"
-          :utilization="antigravityClaudeUsageFromAPI.utilization"
-          :resets-at="antigravityClaudeUsageFromAPI.resetTime"
-          color="amber"
-        />
-
-        <details v-if="otherAntigravityQuotas.length" class="text-[10px] text-gray-500 dark:text-gray-400">
-          <summary class="cursor-pointer">{{ t('admin.accounts.usageWindow.allModels') }}</summary>
-          <div v-for="model in otherAntigravityQuotas" :key="model.id" class="mt-1" :title="model.id">
-            <div class="break-all">{{ model.id }}</div>
-            <UsageProgressBar :label="'%'" :utilization="model.utilization" :resets-at="model.resetTime" color="indigo" />
-          </div>
-        </details>
 
         <div v-if="aiCreditsDisplay" class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
           💳 {{ t('admin.accounts.aiCreditsBalance') }}: {{ aiCreditsDisplay }}
@@ -898,101 +849,23 @@ const shouldLazyLoadOnMobile = computed(() => {
   return shouldFetchUsage.value && !isDesktopViewport.value
 })
 
-// Antigravity quota types (用于 API 返回的数据)
-interface AntigravityUsageResult {
-  utilization: number
-  resetTime: string | null
-}
-
+// Use one actual upstream entry per family. Never combine a percentage from
+// one level with a reset time from another, or substitute an older model.
 const priorityAntigravityModels = [
-  { id: 'gemini-4-argon-high', label: 'G4 H', color: 'indigo' as const },
-  { id: 'gemini-4-argon-medium', label: 'G4 M', color: 'indigo' as const },
-  { id: 'gemini-4-argon-low', label: 'G4 L', color: 'indigo' as const },
-  { id: 'claude-opus-5-5-high', label: 'O55 H', color: 'amber' as const },
-  { id: 'claude-opus-5-5-medium', label: 'O55 M', color: 'amber' as const },
-  { id: 'claude-opus-5-5-low', label: 'O55 L', color: 'amber' as const }
+  { label: 'Gemini 4', color: 'indigo' as const, ids: ['gemini-4-argon-high', 'gemini-4-argon-medium', 'gemini-4-argon-low'] },
+  { label: 'Opus 5.5', color: 'amber' as const, ids: ['claude-opus-5-5-high', 'claude-opus-5-5-medium', 'claude-opus-5-5-low'] },
+  { label: '3.8 Flash', color: 'emerald' as const, ids: ['gemini-3.8-flash-high', 'gemini-3.8-flash', 'gemini-3.8-flash-medium', 'gemini-3.8-flash-low'] }
 ]
 const priorityAntigravityQuotas = computed(() => {
   const quotas = usageInfo.value?.antigravity_quota ?? {}
-  return priorityAntigravityModels.flatMap((model) => {
-    const quota = quotas[model.id]
-    return quota ? [{ ...model, utilization: quota.utilization, resetTime: quota.reset_time || null }] : []
+  return priorityAntigravityModels.map((model) => {
+    const id = model.ids.find((candidate) => quotas[candidate])
+    return { ...model, id, quota: id ? quotas[id] : null }
   })
 })
-const otherAntigravityQuotas = computed(() => {
-  const priorityIds = new Set(priorityAntigravityModels.map((model) => model.id))
-  return Object.entries(usageInfo.value?.antigravity_quota ?? {})
-    .filter(([id]) => !priorityIds.has(id))
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([id, quota]) => ({ id, utilization: quota.utilization, resetTime: quota.reset_time || null }))
-})
-
-// ===== Antigravity quota from API (usageInfo.antigravity_quota) =====
-
-// 检查是否有从 API 获取的配额数据
 const hasAntigravityQuotaFromAPI = computed(() => {
   return usageInfo.value?.antigravity_quota && Object.keys(usageInfo.value.antigravity_quota).length > 0
 })
-
-// 从 API 配额数据中获取使用率（多模型取最高使用率）
-const getAntigravityUsageFromAPI = (
-  modelNames: string[]
-): AntigravityUsageResult | null => {
-  const quota = usageInfo.value?.antigravity_quota
-  if (!quota) return null
-
-  let maxUtilization = 0
-  let earliestReset: string | null = null
-
-  for (const model of modelNames) {
-    const modelQuota = quota[model]
-    if (!modelQuota) continue
-
-    if (modelQuota.utilization > maxUtilization) {
-      maxUtilization = modelQuota.utilization
-    }
-    if (modelQuota.reset_time) {
-      if (!earliestReset || modelQuota.reset_time < earliestReset) {
-        earliestReset = modelQuota.reset_time
-      }
-    }
-  }
-
-  // 如果没有找到任何匹配的模型
-  if (maxUtilization === 0 && earliestReset === null) {
-    const hasAnyData = modelNames.some((m) => quota[m])
-    if (!hasAnyData) return null
-  }
-
-  return {
-    utilization: maxUtilization,
-    resetTime: earliestReset
-  }
-}
-
-// Gemini 3 Pro from API
-const antigravity3ProUsageFromAPI = computed(() =>
-  getAntigravityUsageFromAPI(['gemini-3-pro-low', 'gemini-3-pro-high', 'gemini-3-pro-preview'])
-)
-
-// Gemini 3 Flash from API
-const antigravity3FlashUsageFromAPI = computed(() => getAntigravityUsageFromAPI(['gemini-3-flash']))
-
-// Gemini Image from API
-const antigravity3ImageUsageFromAPI = computed(() =>
-  getAntigravityUsageFromAPI(['gemini-2.5-flash-image', 'gemini-3.1-flash-image', 'gemini-3-pro-image'])
-)
-
-// Claude from API (all Claude model variants)
-const antigravityClaudeUsageFromAPI = computed(() =>
-  getAntigravityUsageFromAPI([
-    'claude-fable-5-1',
-    'claude-fable-5',
-    'claude-sonnet-4-5', 'claude-opus-4-5-thinking',
-    'claude-sonnet-4-6', 'claude-opus-4-6', 'claude-opus-4-6-thinking',
-    'claude-opus-4-7', 'claude-opus-4-8',
-  ])
-)
 
 const aiCreditsDisplay = computed(() => {
   const credits = usageInfo.value?.ai_credits
