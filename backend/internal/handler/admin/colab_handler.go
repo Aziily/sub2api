@@ -3,6 +3,7 @@ package admin
 import (
 	"database/sql"
 	"errors"
+	"io"
 	"net/http"
 	"os"
 
@@ -30,9 +31,13 @@ func (h *ColabHandler) fail(c *gin.Context, e error) {
 	}
 	response.Error(c, code, msg)
 }
-func (h *ColabHandler) Status(admin bool) gin.HandlerFunc {
+func (h *ColabHandler) Status(owner ownerFunc, admin bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		v, e := h.svc.Status(c.Request.Context(), admin)
+		u, ok := owner(c)
+		if !ok {
+			return
+		}
+		v, e := h.svc.Status(c.Request.Context(), u, admin)
 		if e != nil {
 			h.fail(c, e)
 			return
@@ -127,11 +132,12 @@ func (h *ColabHandler) Submit(owner ownerFunc) gin.HandlerFunc {
 		}
 		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 70000)
 		var in struct {
-			ID       string `json:"id"`
-			Title    string `json:"title"`
-			Code     string `json:"code"`
-			Hardware string `json:"hardware"`
-			Timeout  int    `json:"timeout_seconds"`
+			ID        string                    `json:"id"`
+			Title     string                    `json:"title"`
+			Code      string                    `json:"code"`
+			Hardware  string                    `json:"hardware"`
+			Timeout   int                       `json:"timeout_seconds"`
+			Workspace *service.ComputeWorkspace `json:"workspace"`
 		}
 		if c.ShouldBindJSON(&in) != nil {
 			response.BadRequest(c, "Invalid or oversized job")
@@ -143,7 +149,7 @@ func (h *ColabHandler) Submit(owner ownerFunc) gin.HandlerFunc {
 		if in.Hardware == "" {
 			in.Hardware = "CPU"
 		}
-		v, e := h.svc.Submit(c.Request.Context(), u, in.ID, in.Title, in.Code, in.Hardware, in.Timeout)
+		v, e := h.svc.Submit(c.Request.Context(), u, in.ID, in.Title, in.Code, in.Hardware, in.Timeout, in.Workspace)
 		if e != nil {
 			h.fail(c, e)
 			return
@@ -163,4 +169,19 @@ func (h *ColabHandler) Cancel(owner ownerFunc, admin bool) gin.HandlerFunc {
 		}
 		response.Success(c, gin.H{"ok": true})
 	}
+}
+
+// A transfer credential can read only the immutable input object of one active job.
+func (h *ColabHandler) Input(c *gin.Context) {
+	f, info, e := h.svc.WorkspaceInput(c.Request.Context(), c.Param("job"), c.GetHeader("X-Compute-Transfer"))
+	if e != nil {
+		response.Error(c, 404, "Transfer not available")
+		return
+	}
+	defer f.Close()
+	c.Header("Cache-Control", "no-store")
+	c.Header("Content-Type", "application/zip")
+	c.Header("X-Content-Type-Options", "nosniff")
+	c.Status(200)
+	_, _ = io.CopyN(c.Writer, f, info.Size())
 }

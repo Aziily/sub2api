@@ -1,16 +1,16 @@
 <template>
   <AppLayout>
     <div class="w-full min-w-0 space-y-6 pb-8">
-      <header class="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-gray-900/5 dark:bg-dark-800 dark:ring-dark-700 sm:p-6">
+      <header class="flex flex-col gap-3">
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 class="flex items-center gap-2 text-xl font-black text-gray-900 dark:text-white">
-              <span class="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-sky-50 text-sky-500 dark:bg-sky-900/30 dark:text-sky-300">
+            <h1 class="flex items-center gap-2 text-xl font-bold text-gray-900 dark:text-white">
+              <span class="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-300">
                 <CloudDriveGlyph class="h-5 w-5" />
               </span>
               {{ t('drive.title') }}
             </h1>
-            <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{{ t('drive.description') }}</p>
+            <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">{{ t('drive.description') }}</p>
           </div>
           <div class="flex gap-2">
             <button type="button" class="btn btn-secondary btn-sm" :disabled="loading" @click="load">
@@ -38,7 +38,7 @@
           </p>
         </div>
         <div v-if="overview?.quota_bytes" class="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-dark-700">
-          <div class="h-full rounded-full bg-sky-500 transition-all" :style="{ width: usedPercent + '%' }" />
+          <div class="h-full rounded-full bg-primary-500 transition-all" :style="{ width: usedPercent + '%' }" />
         </div>
         <dl class="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
           <div>

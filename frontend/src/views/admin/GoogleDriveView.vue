@@ -1,11 +1,11 @@
 <template>
   <AppLayout>
     <div class="w-full min-w-0 space-y-6 pb-8">
-      <header class="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-gray-900/5 dark:bg-dark-800 dark:ring-dark-700 sm:p-6">
+      <header class="flex flex-col gap-3">
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 class="text-xl font-black text-gray-900 dark:text-white">{{ t('admin.driveStorage.title') }}</h1>
-            <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.driveStorage.description') }}</p>
+            <h1 class="text-xl font-bold text-gray-900 dark:text-white">{{ t('admin.driveStorage.title') }}</h1>
+            <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.driveStorage.description') }}</p>
           </div>
           <div class="flex gap-2">
             <button type="button" class="btn btn-secondary btn-sm" :disabled="loading" @click="load">
@@ -22,18 +22,7 @@
         </p>
       </header>
 
-      <section class="card p-5" data-testid="drive-checks">
-        <h2 class="mb-3 text-base font-semibold text-gray-900 dark:text-white">{{ t('admin.driveStorage.checks') }}</h2>
-        <ul class="grid gap-2 sm:grid-cols-2">
-          <li v-for="check in state?.checks ?? []" :key="check.key" class="flex items-start gap-3 rounded-xl border border-gray-100 p-3 dark:border-dark-700">
-            <Icon :name="check.ok ? 'checkCircle' : 'exclamationTriangle'" size="md" :class="check.ok ? 'text-emerald-500' : 'text-amber-500'" />
-            <div class="min-w-0">
-              <p class="text-sm font-medium text-gray-900 dark:text-white">{{ checkLabel(check.key) }}</p>
-              <p class="break-all text-xs text-gray-500">{{ checkDetail(check) }}</p>
-            </div>
-          </li>
-        </ul>
-      </section>
+
 
       <section class="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <div v-for="card in poolCards" :key="card.label" class="card p-4">
@@ -42,6 +31,19 @@
           <p v-if="card.hint" class="mt-0.5 text-xs text-gray-400">{{ card.hint }}</p>
         </div>
       </section>
+
+      <details class="card p-5" data-testid="drive-checks">
+        <summary class="cursor-pointer text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.driveStorage.checks') }}</summary>
+        <ul class="mt-4 grid gap-2 sm:grid-cols-2">
+          <li v-for="check in state?.checks ?? []" :key="check.key" class="flex items-start gap-3 rounded-xl border border-gray-100 p-3 dark:border-dark-700">
+            <Icon :name="check.ok ? 'checkCircle' : 'exclamationTriangle'" size="md" :class="check.ok ? 'text-emerald-500' : 'text-amber-500'" />
+            <div class="min-w-0">
+              <p class="text-sm font-medium text-gray-900 dark:text-white">{{ checkLabel(check.key) }}</p>
+              <p class="break-all text-xs text-gray-500">{{ checkDetail(check) }}</p>
+            </div>
+          </li>
+        </ul>
+      </details>
 
       <section class="card p-5">
         <h2 class="mb-1 text-base font-semibold text-gray-900 dark:text-white">{{ t('admin.driveStorage.accounts') }}</h2>
@@ -70,7 +72,7 @@
                 </td>
                 <td class="py-3 pr-4">
                   <div v-if="a.quota_limit" class="h-1.5 overflow-hidden rounded-full bg-gray-100 dark:bg-dark-700">
-                    <div class="h-full rounded-full" :class="percent(a) > 90 ? 'bg-red-500' : 'bg-sky-500'" :style="{ width: percent(a) + '%' }" />
+                    <div class="h-full rounded-full" :class="percent(a) > 90 ? 'bg-red-500' : 'bg-primary-500'" :style="{ width: percent(a) + '%' }" />
                   </div>
                   <p class="mt-1 text-xs text-gray-500">
                     {{ formatBytes(a.quota_usage) }} / {{ a.quota_limit == null ? t('admin.driveStorage.unlimited') : formatBytes(a.quota_limit) }}

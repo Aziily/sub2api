@@ -50,7 +50,7 @@ func (c *Client) request(ctx context.Context, method, path string, body any) (*h
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	h := c.HTTP
 	if h == nil {
-		h = &http.Client{Timeout: 6 * time.Minute}
+		h = &http.Client{Timeout: 61 * time.Minute}
 	}
 	resp, e := h.Do(req)
 	if e != nil {
@@ -180,22 +180,24 @@ func parseExecution(raw []byte) (*Execution, error) {
 
 // HardwareOption describes a Colab runtime configuration and whether an account is eligible.
 type HardwareOption struct {
-	ID          string `json:"id"`
-	Label       string `json:"label"`
-	Variant     string `json:"variant"`
-	Accelerator string `json:"accelerator"`
-	Shape       string `json:"shape"`
-	Eligible    bool   `json:"eligible"`
-	HighMem     bool   `json:"high_mem,omitempty"`
+	ID           string `json:"id"`
+	Label        string `json:"label"`
+	Variant      string `json:"variant"`
+	Accelerator  string `json:"accelerator"`
+	Shape        string `json:"shape"`
+	Eligible     bool   `json:"eligible"`
+	VRAMGB       int    `json:"vram_gb,omitempty"`
+	MemorySource string `json:"memory_source,omitempty"`
+	HighMem      bool   `json:"high_mem,omitempty"`
 }
 
 var catalog = []HardwareOption{
-	{ID: "A100", Label: "A100 GPU", Variant: "VARIANT_GPU", Accelerator: "A100", Shape: "SHAPE_STANDARD"},
-	{ID: "A100_HIGHMEM", Label: "A100 GPU (High-RAM)", Variant: "VARIANT_GPU", Accelerator: "A100", Shape: "SHAPE_HIGHMEM", HighMem: true},
+	{ID: "A100", Label: "A100 GPU", VRAMGB: 40, MemorySource: "observed", Variant: "VARIANT_GPU", Accelerator: "A100", Shape: "SHAPE_STANDARD"},
+	{ID: "A100_HIGHMEM", Label: "A100 GPU (High-RAM)", VRAMGB: 40, MemorySource: "nominal", Variant: "VARIANT_GPU", Accelerator: "A100", Shape: "SHAPE_HIGHMEM", HighMem: true},
 	{ID: "H100", Label: "H100 GPU", Variant: "VARIANT_GPU", Accelerator: "H100", Shape: "SHAPE_STANDARD"},
-	{ID: "L4", Label: "L4 GPU", Variant: "VARIANT_GPU", Accelerator: "L4", Shape: "SHAPE_STANDARD"},
+	{ID: "L4", Label: "L4 GPU", VRAMGB: 24, MemorySource: "nominal", Variant: "VARIANT_GPU", Accelerator: "L4", Shape: "SHAPE_STANDARD"},
 	{ID: "G4", Label: "G4 GPU", Variant: "VARIANT_GPU", Accelerator: "G4", Shape: "SHAPE_STANDARD"},
-	{ID: "T4", Label: "T4 GPU", Variant: "VARIANT_GPU", Accelerator: "T4", Shape: "SHAPE_STANDARD"},
+	{ID: "T4", Label: "T4 GPU", VRAMGB: 16, MemorySource: "nominal", Variant: "VARIANT_GPU", Accelerator: "T4", Shape: "SHAPE_STANDARD"},
 	{ID: "CPU", Label: "CPU", Variant: "VARIANT_CPU", Accelerator: "NONE", Shape: "SHAPE_STANDARD"},
 	{ID: "CPU_HIGHMEM", Label: "CPU (High-RAM)", Variant: "VARIANT_CPU", Accelerator: "NONE", Shape: "SHAPE_HIGHMEM", HighMem: true},
 }
