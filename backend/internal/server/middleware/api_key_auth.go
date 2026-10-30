@@ -169,7 +169,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		// Async image task polling only reads data that already belongs to the
 		// authenticated key and must remain available after the completed
 		// generation consumes the key's remaining balance.
-		skipBilling := c.Request.URL.Path == "/v1/usage" || billingInfoRequest || isAsyncImageTaskRead(c.Request.Method, c.Request.URL.Path)
+		skipBilling := c.Request.URL.Path == "/v1/usage" || billingInfoRequest || isAsyncImageTaskRead(c.Request.Method, c.Request.URL.Path) || isResourceBillingPath(c.Request.URL.Path)
 
 		// ── 4. SimpleMode → early return ─────────────────────────────
 
@@ -446,4 +446,17 @@ func validateAPIKeyGroupAvailable(apiKey *service.APIKey) (string, string, bool)
 		return "GROUP_DISABLED", "API Key 所属分组已停用", false
 	}
 	return "", "", true
+}
+
+// Storage enforces byte quotas; compute reserves its own job charge. Applying
+// model billing here would prevent cancelling/fetching a job after its hold
+// consumes the user's balance. Resource routes additionally require a usable
+// (active, unexpired, non-exhausted) key through DriveAPIKeyUsable/WebDAVMatchUser.
+func isResourceBillingPath(path string) bool {
+	for _, root := range []string{"/drive/v1", "/compute/v1", "/webdav"} {
+		if path == root || strings.HasPrefix(path, root+"/") {
+			return true
+		}
+	}
+	return false
 }

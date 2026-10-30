@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -1791,4 +1792,42 @@ func (r *stubUserSubscriptionRepo) IncrementUsage(ctx context.Context, id int64,
 
 func (r *stubUserSubscriptionRepo) BatchUpdateExpiredStatus(ctx context.Context) (int64, error) {
 	return 0, errors.New("not implemented")
+}
+
+func TestResourceBillingDoesNotBlockResultsAtZeroBalance(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, tc := range []struct {
+		path     string
+		expired  bool
+		resource bool
+		want     int
+	}{
+		{"/compute/v1/jobs/job", false, true, 200},
+		{"/drive/v1/download", false, true, 200},
+		{"/v1/messages", false, false, 403},
+		{"/compute/v1evil", false, false, 403},
+		{"/compute/v1/jobs/job", true, true, 401},
+	} {
+		t.Run(tc.path+fmt.Sprint(tc.expired), func(t *testing.T) {
+			key := &service.APIKey{ID: 100, UserID: 7, Key: "resource-test", Status: service.StatusActive, User: &service.User{ID: 7, Status: service.StatusActive, Balance: 0}}
+			if tc.expired {
+				expired := time.Now().Add(-time.Hour)
+				key.ExpiresAt = &expired
+			}
+			repo := &stubApiKeyRepo{getByKey: func(context.Context, string) (*service.APIKey, error) { return key, nil }}
+			cfg := &config.Config{RunMode: config.RunModeStandard}
+			svc := service.NewAPIKeyService(repo, nil, nil, nil, nil, nil, cfg)
+			r := gin.New()
+			r.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(svc, nil, cfg)))
+			if tc.resource {
+				r.Use(DriveAPIKeyUsable())
+			}
+			r.GET(tc.path, func(c *gin.Context) { c.Status(200) })
+			req := httptest.NewRequest("GET", tc.path, nil)
+			req.Header.Set("Authorization", "Bearer resource-test")
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+			require.Equal(t, tc.want, w.Code, w.Body.String())
+		})
+	}
 }
