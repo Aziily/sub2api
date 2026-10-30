@@ -57,3 +57,23 @@ func TestCPUEligibility(t *testing.T) {
 		t.Fatal("eligible CPU denied")
 	}
 }
+
+func TestHardwareEligibilityAndSummary(t *testing.T) {
+	raw := []byte(`{"runtimeSpecs":[
+		{"key":{"shape":"SHAPE_STANDARD","variant":"VARIANT_GPU","accelerator":"A100"},"eligible":true},
+		{"key":{"shape":"SHAPE_HIGHMEM","variant":"VARIANT_GPU","accelerator":"A100"},"eligible":true},
+		{"key":{"shape":"SHAPE_STANDARD","variant":"VARIANT_GPU","accelerator":"H100"}},
+		{"key":{"shape":"SHAPE_STANDARD","variant":"VARIANT_CPU","accelerator":"NONE"},"eligible":true}
+	]}`)
+	if !HardwareEligible(raw, "A100") || !HardwareEligible(raw, "A100_HIGHMEM") {
+		t.Fatal("expected A100 and A100_HIGHMEM to be eligible")
+	}
+	if HardwareEligible(raw, "H100") {
+		t.Fatal("expected H100 to be ineligible when eligible flag is omitted")
+	}
+	body := RuntimeBody("A100")
+	spec, _ := body["runtimeSpec"].(map[string]string)
+	if spec["variant"] != "VARIANT_GPU" || spec["accelerator"] != "A100" || spec["shape"] != "SHAPE_STANDARD" {
+		t.Fatalf("unexpected A100 runtime body: %#v", body)
+	}
+}

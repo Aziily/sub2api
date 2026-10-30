@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Submit and inspect CPU jobs using a Sub2API user API key (stdlib only)."""
+"""Submit and inspect Colab GPU/CPU jobs using a Sub2API user API key (stdlib only)."""
 import argparse
 import getpass
 import json
@@ -17,6 +17,7 @@ def main():
     sub = p.add_subparsers(dest='command', required=True)
     submit = sub.add_parser('submit')
     submit.add_argument('file', type=Path)
+    submit.add_argument('--hardware', default='CPU', help='Hardware spec: A100, A100_HIGHMEM, L4, G4, T4, CPU, CPU_HIGHMEM')
     submit.add_argument('--timeout', type=int, default=180)
     submit.add_argument('--id', default=None, help='Reuse the same UUID to safely retry a submission')
     for name in ['status', 'cancel']:
@@ -33,7 +34,7 @@ def main():
     if a.command == 'submit':
         job_id = str(uuid.UUID(a.id)) if a.id else str(uuid.uuid4())
         print('Job ID (keep this for retry):', job_id)
-        data = json.dumps(dict(id=job_id, title=a.file.name, code=a.file.read_text(), timeout_seconds=a.timeout)).encode()
+        data = json.dumps(dict(id=job_id, title=a.file.name, code=a.file.read_text(), hardware=a.hardware, timeout_seconds=a.timeout)).encode()
         method = 'POST'
     elif a.command in ['status', 'cancel']:
         path += '/' + str(uuid.UUID(a.id))

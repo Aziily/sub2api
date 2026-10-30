@@ -22,6 +22,7 @@ import (
 )
 
 var ErrComputeUnavailable = errors.New("compute is not configured or has no verified CPU account")
+var ErrComputeHardwareUnavailable = errors.New("requested GPU/CPU hardware is not available on any enabled Colab account")
 var ErrComputeConflict = errors.New("job id already exists with different content, or queue is full")
 
 type ColabService struct {
@@ -32,13 +33,18 @@ type ColabService struct {
 	disabled string
 }
 type ComputeAccount struct {
-	ID           int64           `json:"id"`
-	Email        string          `json:"email"`
-	Enabled      bool            `json:"enabled"`
-	Subscription json.RawMessage `json:"subscription"`
-	Specs        json.RawMessage `json:"runtime_specs"`
-	LastError    string          `json:"last_error"`
-	CheckedAt    *time.Time      `json:"checked_at"`
+	ID                  int64                  `json:"id"`
+	Email               string                 `json:"email"`
+	Enabled             bool                   `json:"enabled"`
+	Subscription        json.RawMessage        `json:"subscription"`
+	Specs               json.RawMessage        `json:"runtime_specs"`
+	HardwareSpecs       []colab.HardwareOption `json:"hardware_specs"`
+	JobCount            int                    `json:"job_count"`
+	TotalRuntimeSeconds int                    `json:"total_runtime_seconds"`
+	GPURuntimeSeconds   int                    `json:"gpu_runtime_seconds"`
+	A100RuntimeSeconds  int                    `json:"a100_runtime_seconds"`
+	LastError           string                 `json:"last_error"`
+	CheckedAt           *time.Time             `json:"checked_at"`
 }
 type ComputeJob struct {
 	ID              string    `json:"id"`
@@ -46,8 +52,10 @@ type ComputeJob struct {
 	AccountID       *int64    `json:"account_id"`
 	Title           string    `json:"title"`
 	Code            string    `json:"code"`
+	Hardware        string    `json:"hardware"`
 	Status          string    `json:"status"`
 	Timeout         int       `json:"timeout_seconds"`
+	DurationSeconds int       `json:"duration_seconds"`
 	Runtime         string    `json:"runtime_name"`
 	Operation       string    `json:"operation_name"`
 	Released        bool      `json:"runtime_released"`
@@ -59,11 +67,19 @@ type ComputeJob struct {
 	UpdatedAt       time.Time `json:"updated_at"`
 }
 
-const jobColumns = `id,user_id,account_id,title,code,status,timeout_seconds,runtime_name,operation_name,runtime_released,cancel_requested,logs,error,output_path,created_at,updated_at`
+const jobColumns = `id,user_id,account_id,title,code,hardware,status,timeout_seconds,runtime_name,operation_name,runtime_released,cancel_requested,logs,error,output_path,created_at,updated_at`
 
 func scanComputeJob(row interface{ Scan(...any) error }) (*ComputeJob, error) {
 	var j ComputeJob
-	e := row.Scan(&j.ID, &j.UserID, &j.AccountID, &j.Title, &j.Code, &j.Status, &j.Timeout, &j.Runtime, &j.Operation, &j.Released, &j.CancelRequested, &j.Logs, &j.Error, &j.OutputPath, &j.CreatedAt, &j.UpdatedAt)
+	e := row.Scan(&j.ID, &j.UserID, &j.AccountID, &j.Title, &j.Code, &j.Hardware, &j.Status, &j.Timeout, &j.Runtime, &j.Operation, &j.Released, &j.CancelRequested, &j.Logs, &j.Error, &j.OutputPath, &j.CreatedAt, &j.UpdatedAt)
+	if j.Hardware == "" {
+		j.Hardware = "CPU"
+	}
+	dur := int(j.UpdatedAt.Sub(j.CreatedAt).Seconds())
+	if dur < 0 {
+		dur = 0
+	}
+	j.DurationSeconds = dur
 	return &j, e
 }
 func ProvideColabService(store *DriveStore, drive *GoogleDriveService, cfg *config.Config) *ColabService {
@@ -194,9 +210,33 @@ func (s *ColabService) Accounts(ctx context.Context) ([]ComputeAccount, error) {
 		if e = rows.Scan(&a.ID, &a.Email, &a.Enabled, &a.Subscription, &a.Specs, &a.LastError, &a.CheckedAt); e != nil {
 			return nil, e
 		}
+		a.HardwareSpecs = colab.SummarizeSpecs(a.Specs)
 		out = append(out, a)
 	}
-	return out, rows.Err()
+	if e = rows.Err(); e != nil {
+		return nil, e
+	}
+	uRows, e := s.store.db.QueryContext(ctx, `SELECT account_id, COUNT(*), COALESCE(SUM(GREATEST(0, EXTRACT(EPOCH FROM (updated_at - created_at))::int)), 0), COALESCE(SUM(CASE WHEN hardware NOT IN ('CPU','CPU_HIGHMEM') THEN GREATEST(0, EXTRACT(EPOCH FROM (updated_at - created_at))::int) ELSE 0 END), 0), COALESCE(SUM(CASE WHEN hardware IN ('A100','A100_HIGHMEM') THEN GREATEST(0, EXTRACT(EPOCH FROM (updated_at - created_at))::int) ELSE 0 END), 0) FROM colab_jobs WHERE account_id IS NOT NULL GROUP BY account_id`)
+	if e == nil {
+		defer uRows.Close()
+		byID := map[int64]int{}
+		for i := range out {
+			byID[out[i].ID] = i
+		}
+		for uRows.Next() {
+			var aid int64
+			var cnt, tot, gpu, a100 int
+			if uRows.Scan(&aid, &cnt, &tot, &gpu, &a100) == nil {
+				if idx, ok := byID[aid]; ok {
+					out[idx].JobCount = cnt
+					out[idx].TotalRuntimeSeconds = tot
+					out[idx].GPURuntimeSeconds = gpu
+					out[idx].A100RuntimeSeconds = a100
+				}
+			}
+		}
+	}
+	return out, nil
 }
 func (s *ColabService) Status(ctx context.Context, admin bool) (map[string]any, error) {
 	a, e := s.Accounts(ctx)
@@ -204,12 +244,47 @@ func (s *ColabService) Status(ctx context.Context, admin bool) (map[string]any, 
 		return nil, e
 	}
 	ready := false
+	poolSpecs := colab.SummarizeSpecs(nil)
 	for _, v := range a {
 		if v.Enabled && v.LastError == "" && v.CheckedAt != nil {
 			ready = true
+			for i, hs := range v.HardwareSpecs {
+				if hs.Eligible && i < len(poolSpecs) {
+					poolSpecs[i].Eligible = true
+				}
+			}
 		}
 	}
-	out := map[string]any{"configured": s.flow != nil, "ready": ready && s.drive.Enabled(), "disabled_reason": s.disabled, "hardware": "CPU", "max_timeout_seconds": 300, "compute_units": nil, "balance_status": "Provider API does not expose remaining compute units"}
+	hwNames := []string{}
+	for _, hs := range poolSpecs {
+		if hs.Eligible && !hs.HighMem {
+			hwNames = append(hwNames, hs.ID)
+		}
+	}
+	hwLabel := "CPU"
+	if len(hwNames) > 0 {
+		hwLabel = strings.Join(hwNames, " / ")
+	}
+	var totalJobs, succeededJobs, totalSec, gpuSec, a100Sec int
+	_ = s.store.db.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(CASE WHEN status='succeeded' THEN 1 ELSE 0 END), 0), COALESCE(SUM(GREATEST(0, EXTRACT(EPOCH FROM (updated_at - created_at))::int)), 0), COALESCE(SUM(CASE WHEN hardware NOT IN ('CPU','CPU_HIGHMEM') THEN GREATEST(0, EXTRACT(EPOCH FROM (updated_at - created_at))::int) ELSE 0 END), 0), COALESCE(SUM(CASE WHEN hardware IN ('A100','A100_HIGHMEM') THEN GREATEST(0, EXTRACT(EPOCH FROM (updated_at - created_at))::int) ELSE 0 END), 0) FROM colab_jobs`).Scan(&totalJobs, &succeededJobs, &totalSec, &gpuSec, &a100Sec)
+	usageSummary := map[string]any{
+		"total_jobs":            totalJobs,
+		"succeeded_jobs":        succeededJobs,
+		"total_runtime_seconds": totalSec,
+		"gpu_runtime_seconds":   gpuSec,
+		"a100_runtime_seconds":  a100Sec,
+	}
+	out := map[string]any{
+		"configured":          s.flow != nil,
+		"ready":               ready && s.drive.Enabled(),
+		"disabled_reason":     s.disabled,
+		"hardware":            hwLabel,
+		"hardware_options":    poolSpecs,
+		"usage_summary":       usageSummary,
+		"max_timeout_seconds": 3600,
+		"compute_units":       nil,
+		"balance_status":      "Google Colab API exposes subscription tier (PRO) and GPU eligibility (A100/L4/G4/T4), not live CU balance",
+	}
 	if admin {
 		out["accounts"] = a
 		out["redirect_uri"] = s.redirect
@@ -227,14 +302,15 @@ func (s *ColabService) SetEnabled(ctx context.Context, id int64, on bool) error 
 	}
 	return nil
 }
-func (s *ColabService) Submit(ctx context.Context, user int64, id, title, code string, timeout int) (*ComputeJob, error) {
+func (s *ColabService) Submit(ctx context.Context, user int64, id, title, code, hardware string, timeout int) (*ComputeJob, error) {
 	if s.flow == nil || !s.drive.Enabled() {
 		return nil, ErrComputeUnavailable
 	}
-	if _, e := uuid.Parse(id); e != nil || len(code) == 0 || len(code) > 65536 || len(title) > 120 || timeout < 30 || timeout > 300 {
+	hwSpec, hwOK := colab.LookupHardware(hardware)
+	if _, e := uuid.Parse(id); e != nil || !hwOK || len(code) == 0 || len(code) > 65536 || len(title) > 120 || timeout < 30 || timeout > 3600 {
 		return nil, os.ErrInvalid
 	}
-	hash := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%s\x00%d", title, code, timeout)))
+	hash := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%s\x00%s\x00%d", title, code, hwSpec.ID, timeout)))
 	hs := hex.EncodeToString(hash[:])
 	tx, e := s.store.db.BeginTx(ctx, nil)
 	if e != nil {
@@ -257,20 +333,36 @@ func (s *ColabService) Submit(ctx context.Context, user int64, id, title, code s
 	if !errors.Is(e, sql.ErrNoRows) {
 		return nil, e
 	}
-	var eligible, queued int
-	if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM colab_accounts WHERE enabled AND last_error='' AND checked_at IS NOT NULL`).Scan(&eligible); e != nil {
+	specRows, e := tx.QueryContext(ctx, `SELECT runtime_specs FROM colab_accounts WHERE enabled AND last_error='' AND checked_at IS NOT NULL`)
+	if e != nil {
 		return nil, e
 	}
-	if eligible == 0 {
+	anyAccount := false
+	hwEligible := false
+	for specRows.Next() {
+		var raw []byte
+		if specRows.Scan(&raw) == nil {
+			anyAccount = true
+			if colab.HardwareEligible(raw, hwSpec.ID) {
+				hwEligible = true
+			}
+		}
+	}
+	specRows.Close()
+	if !anyAccount {
 		return nil, ErrComputeUnavailable
 	}
+	if !hwEligible {
+		return nil, ErrComputeHardwareUnavailable
+	}
+	var queued int
 	if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM colab_jobs WHERE status IN ('queued','provisioning','running','writing')`).Scan(&queued); e != nil {
 		return nil, e
 	}
 	if queued >= 20 {
 		return nil, ErrComputeConflict
 	}
-	if _, e = tx.ExecContext(ctx, `INSERT INTO colab_jobs(id,user_id,title,code,request_hash,timeout_seconds) VALUES($1,$2,$3,$4,$5,$6)`, id, user, title, code, hs, timeout); e != nil {
+	if _, e = tx.ExecContext(ctx, `INSERT INTO colab_jobs(id,user_id,title,code,hardware,request_hash,timeout_seconds) VALUES($1,$2,$3,$4,$5,$6,$7)`, id, user, title, code, hwSpec.ID, hs, timeout); e != nil {
 		return nil, e
 	}
 	if e = tx.Commit(); e != nil {
@@ -356,19 +448,19 @@ func (s *ColabService) workerTick() {
 	if e != nil {
 		return
 	}
-	rows, e := conn.QueryContext(ctx, `SELECT id,account_id,runtime_name,operation_name FROM colab_jobs WHERE runtime_name<>'' AND NOT runtime_released`)
+	rows, e := conn.QueryContext(ctx, `SELECT id,account_id,runtime_name,operation_name,hardware FROM colab_jobs WHERE runtime_name<>'' AND NOT runtime_released`)
 	if e != nil {
 		return
 	}
 	type pending struct {
-		id                 string
-		account            int64
-		runtime, operation string
+		id                           string
+		account                      int64
+		runtime, operation, hardware string
 	}
 	left := []pending{}
 	for rows.Next() {
 		var p pending
-		if rows.Scan(&p.id, &p.account, &p.runtime, &p.operation) != nil {
+		if rows.Scan(&p.id, &p.account, &p.runtime, &p.operation, &p.hardware) != nil {
 			rows.Close()
 			return
 		}
@@ -376,21 +468,34 @@ func (s *ColabService) workerTick() {
 	}
 	rows.Close()
 	for _, p := range left {
-		if !s.release(ctx, p.account, p.runtime, p.operation) {
+		if !s.release(ctx, p.account, p.runtime, p.operation, p.hardware) {
 			return
 		}
 		if _, e = conn.ExecContext(ctx, `UPDATE colab_jobs SET runtime_released=true WHERE id=$1`, p.id); e != nil {
 			return
 		}
 	}
-	var id string
-	e = conn.QueryRowContext(ctx, `SELECT id FROM colab_jobs WHERE status='queued' AND NOT cancel_requested ORDER BY created_at LIMIT 1`).Scan(&id)
+	var id, hw string
+	e = conn.QueryRowContext(ctx, `SELECT id,hardware FROM colab_jobs WHERE status='queued' AND NOT cancel_requested ORDER BY created_at LIMIT 1`).Scan(&id, &hw)
+	if e != nil {
+		return
+	}
+	accRows, e := conn.QueryContext(ctx, `SELECT id,runtime_specs FROM colab_accounts WHERE enabled AND last_error='' AND checked_at IS NOT NULL ORDER BY id`)
 	if e != nil {
 		return
 	}
 	var account int64
-	e = conn.QueryRowContext(ctx, `SELECT id FROM colab_accounts WHERE enabled AND last_error='' AND checked_at IS NOT NULL ORDER BY id LIMIT 1`).Scan(&account)
-	if e != nil {
+	for accRows.Next() {
+		var aid int64
+		var raw []byte
+		if accRows.Scan(&aid, &raw) == nil && colab.HardwareEligible(raw, hw) {
+			account = aid
+			break
+		}
+	}
+	accRows.Close()
+	if account == 0 {
+		_, _ = conn.ExecContext(ctx, `UPDATE colab_jobs SET status='failed',error='No enabled Colab account is eligible for requested hardware',updated_at=now() WHERE id=$1`, id)
 		return
 	}
 	runtime := "runtimes/pool-" + id
@@ -408,7 +513,7 @@ func (s *ColabService) workerTick() {
 	}
 	s.run(ctx, j)
 }
-func (s *ColabService) release(ctx context.Context, account int64, runtime, operation string) bool {
+func (s *ColabService) release(ctx context.Context, account int64, runtime, operation, hardware string) bool {
 	c, e := s.client(ctx, account)
 	if e != nil {
 		return false
@@ -418,7 +523,7 @@ func (s *ColabService) release(ctx context.Context, account int64, runtime, oper
 		// A 404 for its runtime alone does not prove provisioning never started.
 		id := strings.TrimPrefix(runtime, "runtimes/pool-")
 		var op colab.Operation
-		if c.JSON(ctx, "POST", allocationPath(runtime, id), cpuRuntimeBody(), &op) != nil {
+		if c.JSON(ctx, "POST", allocationPath(runtime, id), colab.RuntimeBody(hardware), &op) != nil {
 			return false
 		}
 		operation = op.Name
@@ -486,7 +591,7 @@ func (s *ColabService) run(parent context.Context, j *ComputeJob) {
 	_, _ = s.store.db.ExecContext(parent, `UPDATE colab_jobs SET status=$2,error=$3,updated_at=now() WHERE id=$1`, j.ID, final, message)
 	cleanup, stop := context.WithTimeout(context.Background(), 60*time.Second)
 	defer stop()
-	if !j.Released && s.release(cleanup, *j.AccountID, j.Runtime, j.Operation) {
+	if !j.Released && s.release(cleanup, *j.AccountID, j.Runtime, j.Operation, j.Hardware) {
 		_, _ = s.store.db.ExecContext(cleanup, `UPDATE colab_jobs SET runtime_released=true WHERE id=$1`, j.ID)
 	}
 }
@@ -500,7 +605,7 @@ func (s *ColabService) execute(ctx context.Context, j *ComputeJob) error {
 	if _, e = s.store.db.ExecContext(ctx, `UPDATE colab_jobs SET operation_name='pending' WHERE id=$1`, j.ID); e != nil {
 		return e
 	}
-	e = c.JSON(ctx, "POST", allocationPath(j.Runtime, j.ID), cpuRuntimeBody(), &op)
+	e = c.JSON(ctx, "POST", allocationPath(j.Runtime, j.ID), colab.RuntimeBody(j.Hardware), &op)
 	if e != nil {
 		var api *colab.APIError
 		if errors.As(e, &api) && api.Status >= 400 && api.Status < 500 && api.Status != 409 {
@@ -527,7 +632,7 @@ func (s *ColabService) execute(ctx context.Context, j *ComputeJob) error {
 		}
 	}
 	if len(op.Error) > 0 && string(op.Error) != "null" {
-		return errors.New("Colab could not allocate this CPU runtime")
+		return fmt.Errorf("Colab could not allocate %s runtime", j.Hardware)
 	}
 	if _, e = s.store.db.ExecContext(ctx, `UPDATE colab_jobs SET status='running',updated_at=now() WHERE id=$1`, j.ID); e != nil {
 		return e
@@ -563,9 +668,6 @@ func (s *ColabService) execute(ctx context.Context, j *ComputeJob) error {
 	return nil
 }
 
-func cpuRuntimeBody() map[string]any {
-	return map[string]any{"runtimeSpec": map[string]string{"variant": "VARIANT_CPU", "accelerator": "NONE", "shape": "SHAPE_STANDARD"}}
-}
 func allocationPath(runtime, id string) string {
 	return "/v1beta/runtimes?runtimeId=" + strings.TrimPrefix(runtime, "runtimes/") + "&requestId=" + id
 }

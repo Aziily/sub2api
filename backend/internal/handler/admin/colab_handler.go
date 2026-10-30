@@ -20,7 +20,9 @@ func (h *ColabHandler) fail(c *gin.Context, e error) {
 	case errors.Is(e, sql.ErrNoRows):
 		code, msg = 404, "Job or account not found"
 	case errors.Is(e, os.ErrInvalid):
-		code, msg = 400, "Use a UUID job ID, 1–65536 bytes of Python and a 30–300 second timeout"
+		code, msg = 400, "Use a UUID job ID, valid hardware (CPU/T4/L4/G4/A100/A100_HIGHMEM/CPU_HIGHMEM), 1–65536 bytes of Python and a 30–3600 second timeout"
+	case errors.Is(e, service.ErrComputeHardwareUnavailable):
+		code, msg = 422, e.Error()
 	case errors.Is(e, service.ErrComputeUnavailable):
 		code, msg = 503, e.Error()
 	case errors.Is(e, service.ErrComputeConflict):
@@ -125,10 +127,11 @@ func (h *ColabHandler) Submit(owner ownerFunc) gin.HandlerFunc {
 		}
 		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 70000)
 		var in struct {
-			ID      string `json:"id"`
-			Title   string `json:"title"`
-			Code    string `json:"code"`
-			Timeout int    `json:"timeout_seconds"`
+			ID       string `json:"id"`
+			Title    string `json:"title"`
+			Code     string `json:"code"`
+			Hardware string `json:"hardware"`
+			Timeout  int    `json:"timeout_seconds"`
 		}
 		if c.ShouldBindJSON(&in) != nil {
 			response.BadRequest(c, "Invalid or oversized job")
@@ -137,7 +140,10 @@ func (h *ColabHandler) Submit(owner ownerFunc) gin.HandlerFunc {
 		if in.Timeout == 0 {
 			in.Timeout = 180
 		}
-		v, e := h.svc.Submit(c.Request.Context(), u, in.ID, in.Title, in.Code, in.Timeout)
+		if in.Hardware == "" {
+			in.Hardware = "CPU"
+		}
+		v, e := h.svc.Submit(c.Request.Context(), u, in.ID, in.Title, in.Code, in.Hardware, in.Timeout)
 		if e != nil {
 			h.fail(c, e)
 			return

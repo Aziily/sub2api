@@ -19,6 +19,7 @@ func registerColabAdminRoutes(g *gin.RouterGroup, h *handler.Handlers) {
 	c.PUT("/accounts/:account", d.Enable)
 	c.GET("/jobs", d.Jobs(admin.SignedInUser, true))
 	c.GET("/jobs/:job", d.Job(admin.SignedInUser, true))
+	c.POST("/jobs", d.Submit(admin.SignedInUser))
 	c.POST("/jobs/:job/cancel", d.Cancel(admin.SignedInUser, true))
 }
 func registerColabUserRoutes(g *gin.RouterGroup, h *handler.Handlers) {

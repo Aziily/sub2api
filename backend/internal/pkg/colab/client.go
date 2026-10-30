@@ -178,21 +178,94 @@ func parseExecution(raw []byte) (*Execution, error) {
 	return &out, nil
 }
 
-// CPUEligible respects Google's account-level availability, including shape.
-func CPUEligible(raw []byte) bool {
+// HardwareOption describes a Colab runtime configuration and whether an account is eligible.
+type HardwareOption struct {
+	ID          string `json:"id"`
+	Label       string `json:"label"`
+	Variant     string `json:"variant"`
+	Accelerator string `json:"accelerator"`
+	Shape       string `json:"shape"`
+	Eligible    bool   `json:"eligible"`
+	HighMem     bool   `json:"high_mem,omitempty"`
+}
+
+var catalog = []HardwareOption{
+	{ID: "A100", Label: "A100 GPU", Variant: "VARIANT_GPU", Accelerator: "A100", Shape: "SHAPE_STANDARD"},
+	{ID: "A100_HIGHMEM", Label: "A100 GPU (High-RAM)", Variant: "VARIANT_GPU", Accelerator: "A100", Shape: "SHAPE_HIGHMEM", HighMem: true},
+	{ID: "H100", Label: "H100 GPU", Variant: "VARIANT_GPU", Accelerator: "H100", Shape: "SHAPE_STANDARD"},
+	{ID: "L4", Label: "L4 GPU", Variant: "VARIANT_GPU", Accelerator: "L4", Shape: "SHAPE_STANDARD"},
+	{ID: "G4", Label: "G4 GPU", Variant: "VARIANT_GPU", Accelerator: "G4", Shape: "SHAPE_STANDARD"},
+	{ID: "T4", Label: "T4 GPU", Variant: "VARIANT_GPU", Accelerator: "T4", Shape: "SHAPE_STANDARD"},
+	{ID: "CPU", Label: "CPU", Variant: "VARIANT_CPU", Accelerator: "NONE", Shape: "SHAPE_STANDARD"},
+	{ID: "CPU_HIGHMEM", Label: "CPU (High-RAM)", Variant: "VARIANT_CPU", Accelerator: "NONE", Shape: "SHAPE_HIGHMEM", HighMem: true},
+}
+
+// LookupHardware normalizes a hardware identifier and returns its Colab runtime spec.
+func LookupHardware(hw string) (HardwareOption, bool) {
+	id := strings.ToUpper(strings.TrimSpace(hw))
+	if id == "" {
+		id = "CPU"
+	}
+	for _, item := range catalog {
+		if item.ID == id {
+			return item, true
+		}
+	}
+	return HardwareOption{}, false
+}
+
+// SummarizeSpecs returns the ordered hardware matrix with account eligibility filled in.
+func SummarizeSpecs(raw []byte) []HardwareOption {
 	var v struct {
 		Specs []struct {
 			Key      struct{ Variant, Accelerator, Shape string } `json:"key"`
 			Eligible bool                                         `json:"eligible"`
 		} `json:"runtimeSpecs"`
 	}
-	if json.Unmarshal(raw, &v) != nil {
+	_ = json.Unmarshal(raw, &v)
+	out := make([]HardwareOption, len(catalog))
+	copy(out, catalog)
+	for i := range out {
+		for _, s := range v.Specs {
+			if s.Eligible && s.Key.Variant == out[i].Variant && s.Key.Accelerator == out[i].Accelerator && s.Key.Shape == out[i].Shape {
+				out[i].Eligible = true
+				break
+			}
+		}
+	}
+	return out
+}
+
+// HardwareEligible reports whether raw runtimeSpecs allow the requested hardware ID.
+func HardwareEligible(raw []byte, hw string) bool {
+	target, ok := LookupHardware(hw)
+	if !ok {
 		return false
 	}
-	for _, s := range v.Specs {
-		if s.Eligible && s.Key.Variant == "VARIANT_CPU" && s.Key.Accelerator == "NONE" && s.Key.Shape == "SHAPE_STANDARD" {
-			return true
+	for _, item := range SummarizeSpecs(raw) {
+		if item.ID == target.ID {
+			return item.Eligible
 		}
 	}
 	return false
+}
+
+// RuntimeBody builds the Google Colab runtimeSpec request body for the given hardware ID.
+func RuntimeBody(hw string) map[string]any {
+	spec, ok := LookupHardware(hw)
+	if !ok {
+		spec, _ = LookupHardware("CPU")
+	}
+	return map[string]any{
+		"runtimeSpec": map[string]string{
+			"variant":     spec.Variant,
+			"accelerator": spec.Accelerator,
+			"shape":       spec.Shape,
+		},
+	}
+}
+
+// CPUEligible respects Google's account-level availability, including shape.
+func CPUEligible(raw []byte) bool {
+	return HardwareEligible(raw, "CPU")
 }
