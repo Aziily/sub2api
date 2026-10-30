@@ -192,7 +192,7 @@ type HardwareOption struct {
 }
 
 var catalog = []HardwareOption{
-	{ID: "A100", Label: "A100 GPU", VRAMGB: 40, MemorySource: "observed", Variant: "VARIANT_GPU", Accelerator: "A100", Shape: "SHAPE_STANDARD"},
+	{ID: "A100", Label: "A100 GPU", VRAMGB: 40, MemorySource: "nominal", Variant: "VARIANT_GPU", Accelerator: "A100", Shape: "SHAPE_STANDARD"},
 	{ID: "A100_HIGHMEM", Label: "A100 GPU (High-RAM)", VRAMGB: 40, MemorySource: "nominal", Variant: "VARIANT_GPU", Accelerator: "A100", Shape: "SHAPE_HIGHMEM", HighMem: true},
 	{ID: "H100", Label: "H100 GPU", Variant: "VARIANT_GPU", Accelerator: "H100", Shape: "SHAPE_STANDARD"},
 	{ID: "L4", Label: "L4 GPU", VRAMGB: 24, MemorySource: "nominal", Variant: "VARIANT_GPU", Accelerator: "L4", Shape: "SHAPE_STANDARD"},

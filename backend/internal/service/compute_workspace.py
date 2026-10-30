@@ -16,7 +16,14 @@ with zipfile.ZipFile(_cp_archive) as archive:
             raise ValueError('Unsafe workspace path')
     archive.extractall(_cp_root)
 _cp_archive.unlink()
-_cp_exit = subprocess.run(_cp_config['command'], cwd=_cp_root).returncode
+with tempfile.TemporaryFile() as stdout, tempfile.TemporaryFile() as stderr:
+    _cp_exit = subprocess.run(_cp_config['command'], cwd=_cp_root, stdout=stdout, stderr=stderr).returncode
+    for stream in (stdout, stderr):
+        stream.seek(0)
+        data = stream.read(1024 * 1024)
+        print(data.decode('utf-8', errors='replace'), end='')
+        if stream.read(1):
+            print('\n[Command log truncated at 1 MiB]')
 _cp_total = 0
 _cp_seen = set()
 with zipfile.ZipFile('/tmp/claudepool-artifacts.zip', 'w', zipfile.ZIP_DEFLATED) as archive:

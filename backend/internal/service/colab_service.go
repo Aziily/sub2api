@@ -74,7 +74,9 @@ const jobColumns = `id,user_id,account_id,title,code,hardware,status,timeout_sec
 
 func scanComputeJob(row interface{ Scan(...any) error }) (*ComputeJob, error) {
 	var j ComputeJob
-	e := row.Scan(&j.ID, &j.UserID, &j.AccountID, &j.Title, &j.Code, &j.Hardware, &j.Status, &j.Timeout, &j.Runtime, &j.Operation, &j.Released, &j.CancelRequested, &j.Logs, &j.Error, &j.OutputPath, &j.CreatedAt, &j.UpdatedAt, &j.AllocatedAt, &j.ReleasedAt, &j.Workspace)
+	var workspace []byte
+	e := row.Scan(&j.ID, &j.UserID, &j.AccountID, &j.Title, &j.Code, &j.Hardware, &j.Status, &j.Timeout, &j.Runtime, &j.Operation, &j.Released, &j.CancelRequested, &j.Logs, &j.Error, &j.OutputPath, &j.CreatedAt, &j.UpdatedAt, &j.AllocatedAt, &j.ReleasedAt, &workspace)
+	j.Workspace = workspace
 	if j.Hardware == "" {
 		j.Hardware = "CPU"
 	}

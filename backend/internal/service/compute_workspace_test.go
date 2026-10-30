@@ -6,6 +6,7 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestWorkspacePathTraversal(t *testing.T) {
@@ -65,5 +66,24 @@ func TestComputeUserStatusIsScoped(t *testing.T) {
 	}
 	if e = m.ExpectationsWereMet(); e != nil {
 		t.Fatal(e)
+	}
+}
+
+func TestComputeLegacyJobWithNullWorkspace(t *testing.T) {
+	db, m, _ := sqlmock.New()
+	defer db.Close()
+	s := &ColabService{store: &DriveStore{db: db}}
+	id := "6530b4e8-372e-44c0-8f75-b652f9c36d75"
+	columns := strings.Split(jobColumns, ",")
+	m.ExpectQuery(`SELECT .* FROM colab_jobs`).WithArgs(id, int64(1), false).WillReturnRows(sqlmock.NewRows(columns).AddRow(id, 1, 2, "legacy", "print(1)", "CPU", "succeeded", 180, "private-runtime", "private-operation", true, false, "ok", "", "/out", time.Now(), time.Now(), nil, nil, nil))
+	j, e := s.Job(context.Background(), 1, id, false)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if j.AllocatedAt != nil || j.DurationSeconds != 0 || len(j.Workspace) != 0 {
+		t.Fatal("invented old runtime or workspace")
+	}
+	if j.Runtime != "" || j.Operation != "" || j.AccountID != nil {
+		t.Fatal("upstream identifiers leaked")
 	}
 }
