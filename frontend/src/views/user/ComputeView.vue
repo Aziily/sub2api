@@ -56,22 +56,18 @@
         </div>
         <div class="card p-5">
           <p class="text-xs text-gray-500">
-            {{ t("compute.platformCredits") }}
+            {{ t(admin ? "compute.googleCU" : "compute.platformCredits") }}
           </p>
           <p
             class="mt-2 text-2xl font-semibold tabular-nums"
             data-testid="compute-credits"
           >
             {{
-              status?.platform_credits == null
-                ? "—"
-                : status.platform_credits.toLocaleString(undefined, {
-                    maximumFractionDigits: 4,
-                  })
+              formatNumber(admin ? status?.compute_units : status?.platform_credits)
             }}
           </p>
           <p class="mt-1 text-xs text-gray-500">
-            {{ t("compute.billingHint") }}
+            {{ t(admin ? "compute.cuSnapshot" : status?.compute_billing_enabled ? "compute.billingEnabledHint" : "compute.billingHint") }}
           </p>
         </div>
         <div class="card p-5">
@@ -99,6 +95,36 @@
           </p>
         </div>
       </section>
+      <section v-if="status?.storage" class="card p-5">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <h2 class="font-semibold">{{ t("compute.taskStorage") }}</h2>
+          <RouterLink class="text-sm text-primary-600 hover:underline" to="/drive">{{ t("compute.openDrive") }}</RouterLink>
+        </div>
+        <div class="mt-3 flex flex-wrap gap-6 text-sm">
+          <span>{{ t("compute.storageUsed") }}: {{ bytes(status.storage.used_bytes) }}</span>
+          <span>{{ t("compute.storageFree") }}: {{ status.storage.available_bytes == null ? '—' : bytes(status.storage.available_bytes) }}</span>
+          <span>{{ t("compute.storageFiles") }}: {{ status.storage.file_count }}</span>
+        </div>
+        <p class="mt-3 text-xs text-gray-500">{{ t("compute.storageHint") }}</p>
+      </section>
+      <section v-if="admin" class="card p-5">
+        <div class="flex items-center justify-between gap-3">
+          <div><h2 class="font-semibold">{{ t("compute.pricingTitle") }}</h2>
+          <p class="mt-1 text-xs text-gray-500">{{ t(status?.compute_billing_enabled ? "compute.billingEnabledHint" : "compute.billingHint") }}</p></div>
+          <button class="btn btn-secondary btn-sm" @click="editPrices">{{ t("compute.editPrices") }}</button>
+        </div>
+        <form v-if="pricingDraft" class="mt-4 space-y-4" @submit.prevent="savePrices">
+          <label class="flex gap-2 text-sm"><input v-model="pricingDraft.enabled" type="checkbox" />{{ t("compute.enableBilling") }}</label>
+          <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <label v-for="hw in status?.hardware_options || []" :key="hw.id" class="text-xs text-gray-500">
+              {{ hw.label }} · {{ t("compute.rateUnit") }}
+              <input v-model="pricingDraft.rates[hw.id]" type="number" min="0" max="1000000" step="0.000001" :required="pricingDraft.enabled && hw.eligible" class="input mt-1 w-full" :aria-label="hw.label + ' ' + t('compute.rateUnit')" />
+            </label>
+          </div>
+          <p class="text-xs text-gray-500">{{ t("compute.pricingHint") }}</p>
+          <div class="flex gap-2"><button class="btn btn-primary btn-sm" :disabled="busy">{{ t("common.save") }}</button><button type="button" class="btn btn-secondary btn-sm" @click="pricingDraft=null">{{ t("common.cancel") }}</button></div>
+        </form>
+      </section>
       <section class="card overflow-hidden">
         <div class="border-b border-gray-100 px-5 py-4 dark:border-dark-700">
           <h2 class="font-semibold">{{ t("compute.resources") }}</h2>
@@ -125,6 +151,7 @@
             />
             <div>
               <p class="text-sm font-semibold">{{ hw.label }}</p>
+              <p v-if="status?.compute_billing_enabled" class="mt-1 text-xs text-primary-600">{{ status.pricing?.rates[hw.id] ?? '—' }} {{ t("compute.rateUnit") }}</p>
               <p class="mt-1 text-xs text-gray-500">
                 {{
                   hw.accelerator === "NONE"
@@ -195,7 +222,7 @@
           <thead class="bg-gray-50 text-xs text-gray-500 dark:bg-dark-900/40">
             <tr>
               <th class="py-2">{{ t("compute.account") }}</th>
-              <th>{{ t("compute.plan") }}</th>
+              <th>{{ t("compute.plan") }}</th><th>{{ t("compute.googleCU") }}</th>
               <th>{{ t("compute.gpuEligibility") }}</th>
               <th>{{ t("compute.accountUsage") }}</th>
               <th>{{ t("compute.status") }}</th>
@@ -215,6 +242,12 @@
                 </div>
               </td>
               <td>{{ a.subscription?.tier || "—" }}</td>
+              <td class="py-3 text-xs">
+                <p class="text-lg font-semibold tabular-nums">{{ formatNumber(a.consumption?.currentBalance) }}</p>
+                <p>{{ formatNumber(a.consumption?.consumptionRateHourly) }} CU/h · {{ a.consumption?.assignmentsCount ?? '—' }} {{ t("compute.activeRuntimes") }}</p>
+                <p class="text-gray-500">{{ stamp(a.consumption_checked_at || null) }}</p>
+                <p v-if="a.consumption_error" class="max-w-xs text-amber-600">{{ t("compute.cuStale") }}: {{ a.consumption_error }}</p>
+              </td>
               <td class="py-3">
                 <div class="flex max-w-md flex-wrap gap-1.5">
                   <span
@@ -269,7 +302,7 @@
           </tbody>
         </table>
         <p class="mt-4 text-xs text-gray-500">
-          {{ t("compute.balance") }}: {{ t("compute.notProvided") }}
+          {{ t("compute.cuHint") }} {{ t("compute.cuSnapshot") }}
         </p>
         <p class="mt-2 break-all text-xs text-gray-500">
           {{ t("compute.callback") }}: {{ status?.redirect_uri }}
@@ -336,6 +369,7 @@
                 required
             /></label>
           </div>
+          <p v-if="status?.compute_billing_enabled" class="text-sm text-primary-600">{{ t('compute.maximumReserve') }}: {{ formatNumber(Number(status.pricing?.rates[hardware]) * timeout / 3600) }}</p>
           <label class="block text-sm"
             >Python<textarea
               v-model="code"
@@ -367,7 +401,7 @@
             <tr>
               <th class="py-2">{{ t("compute.jobTitle") }}</th>
               <th>{{ t("compute.selectHardware") }}</th>
-              <th>{{ t("compute.duration") }}</th>
+              <th>{{ t("compute.duration") }}</th><th>{{ t("compute.cost") }}</th>
               <th v-if="admin">{{ t("compute.owner") }}</th>
               <th>{{ t("compute.status") }}</th>
               <th>{{ t("compute.created") }}</th>
@@ -393,6 +427,7 @@
               <td>
                 {{ j.allocated_at ? fmtDur(j.duration_seconds || 0) : "—" }}
               </td>
+              <td class="text-xs tabular-nums">{{ formatNumber(j.billing_status === 'reserved' ? Number(j.reserved_cost) : Number(j.charged_cost || 0)) }}<p class="text-gray-500">{{ t('compute.billingStates.' + (j.billing_status || 'free')) }}</p></td>
               <td v-if="admin">#{{ j.user_id }}</td>
               <td>{{ stateLabel(j.status) }}</td>
               <td>{{ stamp(j.created_at) }}</td>
@@ -451,6 +486,8 @@
           >
             {{ selected.error }}
           </p>
+          <p class="mt-3 text-sm">{{ t('compute.costDetail') }}: {{ formatNumber(Number(selected.reserved_cost || 0)) }} / {{ formatNumber(Number(selected.charged_cost || 0)) }} · {{ t('compute.billingStates.' + (selected.billing_status || 'free')) }}</p>
+          <p v-if="selected.billing_status !== 'free'" class="mt-1 text-xs text-gray-500">{{ selected.price_per_hour }} {{ t('compute.rateUnit') }} · {{ selected.billable_seconds || 0 }}s</p>
           <p v-if="selected.output_path" class="mt-4 break-all text-sm">
             {{ t("compute.output") }}:
             <RouterLink class="text-primary-600 underline" to="/drive">{{
@@ -505,6 +542,9 @@ interface UsageSummary {
   a100_runtime_seconds: number;
 }
 interface Account {
+  consumption?: {currentBalance:number;consumptionRateHourly:number;assignmentsCount:number};
+  consumption_checked_at?: string;
+  consumption_error?: string;
   id: number;
   email: string;
   enabled: boolean;
@@ -517,7 +557,12 @@ interface Account {
   last_error: string;
   checked_at: string | null;
 }
+interface Pricing { enabled: boolean; version: number; rates: Record<string, string | number> }
 interface Status {
+  compute_units?: number | null;
+  compute_billing_enabled?: boolean;
+  pricing?: Pricing;
+  storage?: { used_bytes:number; available_bytes:number|null; file_count:number };
   platform_credits?: number;
   configured: boolean;
   ready: boolean;
@@ -529,6 +574,11 @@ interface Status {
   accounts?: Account[];
 }
 interface Job {
+  price_per_hour?: string;
+  billable_seconds?: number;
+  billing_status?: string;
+  reserved_cost?: string;
+  charged_cost?: string;
   allocated_at?: string | null;
   id: string;
   title: string;
@@ -553,6 +603,7 @@ const status = ref<Status | null>(null),
   selected = ref<Job | null>(null),
   busy = ref(false),
   error = ref("");
+const pricingDraft = ref<Pricing | null>(null);
 const title = ref("CPU smoke test"),
   hardware = ref("CPU"),
   timeout = ref(180),
@@ -572,6 +623,14 @@ python3 ~/compute.py wait JOB_ID
 python3 ~/compute.py logs JOB_ID
 python3 ~/compute.py fetch JOB_ID --directory ./results/JOB_ID`,
 );
+function formatNumber(n?: number|null) { return n == null || !Number.isFinite(n) ? '—' : n.toLocaleString(undefined,{maximumFractionDigits:4}); }
+function bytes(n:number) { if(n<1024)return `${n} B`;return `${(n/1024/1024).toFixed(2)} MiB`; }
+function editPrices(){ if(status.value?.pricing) pricingDraft.value=JSON.parse(JSON.stringify(status.value.pricing)); }
+async function savePrices(){
+ const draft=pricingDraft.value;if(!draft)return;
+ const rates=Object.fromEntries(Object.entries(draft.rates).filter(([,v])=>v!==''));
+ await action(async()=>{await api.put('/admin/compute/pricing',{...draft,rates});pricingDraft.value=null;});
+}
 function fmtDur(sec: number) {
   if (!sec || sec <= 0) return "0s";
   const m = Math.floor(sec / 60),

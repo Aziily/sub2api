@@ -50,10 +50,11 @@ func TestComputeUserStatusIsScoped(t *testing.T) {
 	db, m, _ := sqlmock.New()
 	defer db.Close()
 	s := &ColabService{store: &DriveStore{db: db}, drive: &GoogleDriveService{}}
-	m.ExpectQuery(`SELECT id,email,enabled,subscription,runtime_specs,last_error,checked_at FROM colab_accounts`).WillReturnRows(sqlmock.NewRows([]string{"id", "email", "enabled", "subscription", "runtime_specs", "last_error", "checked_at"}))
+	m.ExpectQuery(`SELECT id,email,enabled,subscription,runtime_specs,last_error,checked_at,consumption,consumption_checked_at,consumption_error FROM colab_accounts`).WillReturnRows(sqlmock.NewRows([]string{"id", "email", "enabled", "subscription", "runtime_specs", "last_error", "checked_at", "consumption", "consumption_checked_at", "consumption_error"}))
 	m.ExpectQuery(`SELECT account_id, COUNT`).WillReturnRows(sqlmock.NewRows([]string{"account_id", "count", "total", "gpu", "a100"}))
 	m.ExpectQuery(`SELECT COUNT\(\*\).*FROM colab_jobs WHERE user_id=\$1 OR \$2`).WithArgs(int64(42), false).WillReturnRows(sqlmock.NewRows([]string{"count", "succeeded", "total", "gpu", "a100"}).AddRow(2, 1, 20, 10, 0))
 	m.ExpectQuery(`SELECT balance FROM users WHERE id=\$1`).WithArgs(int64(42)).WillReturnRows(sqlmock.NewRows([]string{"balance"}).AddRow(12.5))
+	m.ExpectQuery(`SELECT enabled,version,rates FROM compute_pricing`).WillReturnRows(sqlmock.NewRows([]string{"enabled", "version", "rates"}).AddRow(false, 1, `{}`))
 	out, e := s.Status(context.Background(), 42, false)
 	if e != nil {
 		t.Fatal(e)
@@ -75,7 +76,7 @@ func TestComputeLegacyJobWithNullWorkspace(t *testing.T) {
 	s := &ColabService{store: &DriveStore{db: db}}
 	id := "6530b4e8-372e-44c0-8f75-b652f9c36d75"
 	columns := strings.Split(jobColumns, ",")
-	m.ExpectQuery(`SELECT .* FROM colab_jobs`).WithArgs(id, int64(1), false).WillReturnRows(sqlmock.NewRows(columns).AddRow(id, 1, 2, "legacy", "print(1)", "CPU", "succeeded", 180, "private-runtime", "private-operation", true, false, "ok", "", "/out", time.Now(), time.Now(), nil, nil, nil))
+	m.ExpectQuery(`SELECT .* FROM colab_jobs`).WithArgs(id, int64(1), false).WillReturnRows(sqlmock.NewRows(columns).AddRow(id, 1, 2, "legacy", "print(1)", "CPU", "succeeded", 180, "private-runtime", "private-operation", true, false, "ok", "", "/out", time.Now(), time.Now(), nil, nil, nil, "0", "0", "0", 0, "free"))
 	j, e := s.Job(context.Background(), 1, id, false)
 	if e != nil {
 		t.Fatal(e)

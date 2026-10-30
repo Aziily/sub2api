@@ -8,7 +8,7 @@ vi.mock("@/api/client", () => ({ default: { get: mocks.get } }));
 vi.mock("@/components/layout/AppLayout.vue", () => ({
   default: { template: "<div><slot /></div>" },
 }));
-afterEach(() => vi.clearAllMocks());
+afterEach(() => { vi.clearAllMocks(); mocks.path="/compute"; });
 describe("Compute resource view", () => {
   it("shows only eligible hardware and user credits without upstream account information", async () => {
     mocks.get.mockImplementation((path: string) =>
@@ -51,4 +51,14 @@ describe("Compute resource view", () => {
     );
     wrapper.unmount();
   });
+  it("shows Google CU rather than the administrator wallet and labels stale snapshots", async () => {
+    mocks.path="/admin/compute";
+    mocks.get.mockImplementation((path:string)=>Promise.resolve({data:path.endsWith("/jobs")?[]:{platform_credits:999,compute_units:199.9,accounts:[{id:1,email:"owner@example.com",enabled:true,consumption:{currentBalance:199.9,consumptionRateHourly:0,assignmentsCount:0},consumption_error:"CU unavailable"}]}}));
+    const w=mount(ComputeView,{global:{stubs:{RouterLink:{template:"<a><slot /></a>"}}}});
+    await flushPromises();
+    expect(w.get('[data-testid="compute-credits"]').text()).toBe("199.9");
+    expect(w.text()).toContain("compute.cuStale");
+    expect(w.text()).not.toContain("999");w.unmount();
+  });
+
 });

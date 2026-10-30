@@ -18,6 +18,10 @@ func NewColabHandler(s *service.ColabService) *ColabHandler { return &ColabHandl
 func (h *ColabHandler) fail(c *gin.Context, e error) {
 	code, msg := 500, "Compute operation failed"
 	switch {
+	case errors.Is(e, service.ErrComputeBalance):
+		code, msg = 402, e.Error()
+	case errors.Is(e, service.ErrComputePrice), errors.Is(e, service.ErrDriveQuotaExceeded):
+		code, msg = 422, e.Error()
 	case errors.Is(e, sql.ErrNoRows):
 		code, msg = 404, "Job or account not found"
 	case errors.Is(e, os.ErrInvalid):
@@ -184,4 +188,17 @@ func (h *ColabHandler) Input(c *gin.Context) {
 	c.Header("X-Content-Type-Options", "nosniff")
 	c.Status(200)
 	_, _ = io.CopyN(c.Writer, f, info.Size())
+}
+
+func (h *ColabHandler) SetPricing(c *gin.Context) {
+	var p service.ComputePricing
+	if c.ShouldBindJSON(&p) != nil {
+		response.BadRequest(c, "Invalid prices")
+		return
+	}
+	if e := h.svc.SetPricing(c.Request.Context(), p); e != nil {
+		h.fail(c, e)
+		return
+	}
+	response.Success(c, gin.H{"ok": true})
 }

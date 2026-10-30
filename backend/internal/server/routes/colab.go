@@ -15,6 +15,7 @@ func registerColabAdminRoutes(g *gin.RouterGroup, h *handler.Handlers) {
 	}
 	c := g.Group("/compute")
 	c.GET("", d.Status(admin.SignedInUser, true))
+	c.PUT("/pricing", d.SetPricing)
 	c.POST("/accounts/authorize", d.Authorize)
 	c.POST("/accounts/:account/refresh", d.Refresh)
 	c.PUT("/accounts/:account", d.Enable)

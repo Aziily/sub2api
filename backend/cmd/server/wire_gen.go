@@ -290,7 +290,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	driveStore := service.NewDriveStore(db, secretEncryptor)
 	googleDriveService := service.ProvideGoogleDriveService(driveStore, configConfig)
 	googleDriveHandler := admin.NewGoogleDriveHandler(googleDriveService)
-	colabService := service.ProvideColabService(driveStore, googleDriveService, configConfig)
+	colabService := service.ProvideColabService(driveStore, googleDriveService, configConfig, userService)
 	colabHandler := admin.NewColabHandler(colabService)
 	upstreamBillingProbeService := service.ProvideUpstreamBillingProbeService(accountRepository, accountTestService, settingService, leaderLockCache, db)
 	openCodeGoUsageService := service.ProvideOpenCodeGoUsageService(accountRepository, httpUpstream, settingService, leaderLockCache, db)
