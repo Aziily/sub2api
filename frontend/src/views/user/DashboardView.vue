@@ -2,16 +2,21 @@
   <AppLayout>
     <div class="space-y-6">
       <p v-if="!authStore.isSimpleMode && user" class="text-sm text-gray-600 dark:text-gray-300">{{ t('dashboard.balance') }}: {{ user.balance }}</p>
-      <ResourceDashboardSummary :api-stats="stats" :api-loading="loading" :api-error="statsError" @refresh="refreshAll" />
-      <div v-if="loading" class="flex items-center justify-center py-12"><LoadingSpinner /></div>
-      <template v-else-if="stats">
-        <UserDashboardStats :show-overview="false" :stats="stats" :balance="user?.balance || 0" :is-simple="authStore.isSimpleMode" :platform-quotas="platformQuotas" />
-        <UserDashboardCharts v-model:startDate="startDate" v-model:endDate="endDate" v-model:granularity="granularity" :loading="loadingCharts" :trend="trendData" :models="modelStats" @dateRangeChange="loadCharts" @granularityChange="loadCharts" @refresh="refreshAll" />
-        <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <div class="lg:col-span-2"><UserDashboardRecentUsage :data="recentUsage" :loading="loadingUsage" /></div>
-          <div class="lg:col-span-1"><UserDashboardQuickActions /></div>
-        </div>
-      </template>
+      <ResourceDashboardSummary :api-stats="stats" :api-loading="loading" :api-error="statsError" @refresh="refreshAll">
+        <template #api>
+          <div class="space-y-6">
+            <div v-if="loading" class="flex items-center justify-center py-12"><LoadingSpinner /></div>
+            <template v-else-if="stats">
+              <UserDashboardStats :show-overview="false" :stats="stats" :balance="user?.balance || 0" :is-simple="authStore.isSimpleMode" :platform-quotas="platformQuotas" />
+              <UserDashboardCharts v-model:startDate="startDate" v-model:endDate="endDate" v-model:granularity="granularity" :loading="loadingCharts" :trend="trendData" :models="modelStats" @dateRangeChange="loadCharts" @granularityChange="loadCharts" @refresh="refreshAll" />
+              <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                <div class="lg:col-span-2"><UserDashboardRecentUsage :data="recentUsage" :loading="loadingUsage" /></div>
+                <div class="lg:col-span-1"><UserDashboardQuickActions /></div>
+              </div>
+            </template>
+          </div>
+        </template>
+      </ResourceDashboardSummary>
     </div>
   </AppLayout>
 </template>

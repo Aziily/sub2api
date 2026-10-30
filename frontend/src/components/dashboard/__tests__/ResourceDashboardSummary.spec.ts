@@ -49,4 +49,23 @@ describe('Resource dashboard',()=>{
   w.unmount()
  })
 
+ it('keeps API charts inside the API panel and switches icon metric blocks with keyboard support', async () => {
+  overview.mockResolvedValue({overview:{enabled:true,used_bytes:123,file_count:3,quota_bytes:1000,available_bytes:877,reserved_bytes:0}})
+  get.mockResolvedValue({data:{platform_credits:5,compute_units:null,usage_summary:usage}})
+  const w=mount(ResourceDashboardSummary,{...options,attachTo:document.body,props:{apiStats:{today_requests:3}},slots:{api:'<div data-testid="api-charts">API charts</div>'}})
+  await flushPromises()
+  expect(w.find('#product-panel-api [data-testid="api-charts"]').isVisible()).toBe(true)
+  expect(w.find('#product-panel-api [data-testid="metric-block"]').exists()).toBe(true)
+  await w.find('#product-tab-storage').trigger('click')
+  expect(w.find('#product-panel-storage').isVisible()).toBe(true)
+  expect(w.find('#product-panel-api').isVisible()).toBe(false)
+  expect(w.find('[data-testid="api-charts"]').exists()).toBe(false)
+  await w.find('#product-tab-storage').trigger('keydown',{key:'ArrowRight'})
+  expect(w.find('#product-tab-compute').attributes('aria-selected')).toBe('true')
+  expect(document.activeElement?.id).toBe('product-tab-compute')
+  await w.find('#product-tab-compute').trigger('keydown',{key:'Home'})
+  expect(w.find('#product-panel-api [data-testid="api-charts"]').isVisible()).toBe(true)
+  w.unmount()
+ })
+
 })

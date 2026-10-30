@@ -1,6 +1,5 @@
 export default {
   "dashboardNewUsers": "今日新增用户",
-  "dashboardAPITrends": "API 趋势与用量",
   "dashboardUsed": "我的文件占用",
   "dashboardActiveTotal": "可用 / 全部",
   "dashboardAPICost": "今日账号成本（美元）",

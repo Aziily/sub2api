@@ -9,37 +9,56 @@
         <Icon name="refresh" size="sm" class="mr-1.5" />{{ t('common.refresh') }}
       </button>
     </header>
-    <div class="grid items-stretch gap-4 xl:grid-cols-3">
-      <ProductSummaryCard data-testid="api-summary" title="API" :scope="t('compute.dashboardAPIScope')" :to="admin ? '/admin/usage' : '/usage'"
-        :metrics="apiMetrics" :loading="apiLoading" :error="apiError ? t('compute.dashboardAPIError') : undefined">
-        <template #icon><Icon name="key" size="md" class="text-blue-600 dark:text-blue-400" /></template>
-        <template v-if="apiStats && !apiError">{{ t('dashboard.performance') }}: {{ number(apiStats.rpm) }} RPM / {{ number(apiStats.tpm) }} TPM</template>
-      </ProductSummaryCard>
-      <ProductSummaryCard data-testid="storage-summary" :title="t('compute.navStorage')" :scope="t('compute.dashboardStorageScope')" :to="admin ? '/admin/drive' : '/drive'"
-        :metrics="storageStats" :loading="busy" :error="storageError ? t('compute.dashboardStorageError') : undefined">
-        <template #icon><StorageIcon class="h-5 w-5 text-emerald-600 dark:text-emerald-400" /></template>
-        <template v-if="storage">
-          {{ t(storage.enabled ? 'compute.dashboardStorageReady' : 'compute.dashboardStorageDisabled') }}
-          <span v-if="admin"> · {{ t('compute.dashboardSnapshot') }} {{ stamp(storage.checkedAt) }}</span>
-        </template>
-      </ProductSummaryCard>
-      <ProductSummaryCard data-testid="compute-summary" :title="t('compute.navCompute')" :scope="t('compute.dashboardComputeScope')" :to="admin ? '/admin/compute' : '/compute'"
-        :metrics="computeStats" :loading="busy" :error="computeError ? t('compute.dashboardComputeError') : undefined">
-        <template #icon><ComputeIcon class="h-5 w-5 text-purple-600 dark:text-purple-400" /></template>
-        <template v-if="compute">
-          <p v-if="admin">
-            {{ t('compute.dashboardCUCoverage', { known: compute.cu_accounts_known ?? 0, total: compute.accounts?.length ?? 0 }) }} · {{ t('compute.dashboardSnapshot') }} {{ stamp(cuCheckedAt) }}
-            <span v-if="cuRefreshFailed" class="text-amber-600"> · {{ t('compute.cuStale') }}</span>
-          </p>
-          <p>{{ t(compute.compute_billing_enabled ? 'compute.billingEnabledHint' : 'compute.billingHint') }}</p>
-        </template>
-      </ProductSummaryCard>
+    <div role="tablist" :aria-label="t('compute.dashboardTitle')" class="flex gap-1 border-b border-gray-200 dark:border-dark-700">
+      <button v-for="(tab, index) in tabs" :id="`product-tab-${tab.id}`" :key="tab.id" role="tab"
+        :aria-selected="active === tab.id" :aria-controls="`product-panel-${tab.id}`" :tabindex="active === tab.id ? 0 : -1"
+        class="flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500"
+        :class="active === tab.id ? 'border-primary-500 text-primary-700 dark:text-primary-300' : 'border-transparent text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'"
+        @click="active = tab.id" @keydown="moveTab($event, index)">
+        <Icon v-if="tab.id === 'api'" name="key" size="md" aria-hidden="true" />
+        <StorageIcon v-else-if="tab.id === 'storage'" class="h-5 w-5" aria-hidden="true" />
+        <ComputeIcon v-else class="h-5 w-5" aria-hidden="true" />
+        {{ tab.title }}
+      </button>
+    </div>
+    <div>
+      <div v-show="active === 'api'" id="product-panel-api" role="tabpanel" aria-labelledby="product-tab-api" tabindex="0">
+        <ProductSummaryCard data-testid="api-summary" title="API" :scope="t('compute.dashboardAPIScope')" :to="admin ? '/admin/usage' : '/usage'"
+          :metrics="apiMetrics" :loading="apiLoading" :error="apiError ? t('compute.dashboardAPIError') : undefined">
+          <template #icon><Icon name="key" size="md" class="text-blue-600 dark:text-blue-400" /></template>
+          <template #content><slot v-if="active === 'api'" name="api" /></template>
+        </ProductSummaryCard>
+      </div>
+      <div v-show="active === 'storage'" id="product-panel-storage" role="tabpanel" aria-labelledby="product-tab-storage" tabindex="0">
+        <ProductSummaryCard data-testid="storage-summary" :title="t('compute.navStorage')" :scope="t('compute.dashboardStorageScope')" :to="admin ? '/admin/drive' : '/drive'"
+          :metrics="storageStats" :loading="busy" :error="storageError ? t('compute.dashboardStorageError') : undefined">
+          <template #icon><StorageIcon class="h-5 w-5 text-emerald-600 dark:text-emerald-400" /></template>
+          <template v-if="storage">
+            {{ t(storage.enabled ? 'compute.dashboardStorageReady' : 'compute.dashboardStorageDisabled') }}
+            <span v-if="admin"> · {{ t('compute.dashboardSnapshot') }} {{ stamp(storage.checkedAt) }}</span>
+          </template>
+        </ProductSummaryCard>
+      </div>
+      <div v-show="active === 'compute'" id="product-panel-compute" role="tabpanel" aria-labelledby="product-tab-compute" tabindex="0">
+        <ProductSummaryCard data-testid="compute-summary" :title="t('compute.navCompute')" :scope="t('compute.dashboardComputeScope')" :to="admin ? '/admin/compute' : '/compute'"
+          :metrics="computeStats" :loading="busy" :error="computeError ? t('compute.dashboardComputeError') : undefined">
+          <template #icon><ComputeIcon class="h-5 w-5 text-purple-600 dark:text-purple-400" /></template>
+          <template v-if="compute">
+            <p v-if="admin">
+              {{ t('compute.dashboardCUCoverage', { known: compute.cu_accounts_known ?? 0, total: compute.accounts?.length ?? 0 }) }} · {{ t('compute.dashboardSnapshot') }} {{ stamp(cuCheckedAt) }}
+              <span v-if="cuRefreshFailed" class="text-amber-600"> · {{ t('compute.cuStale') }}</span>
+            </p>
+            <p>{{ t(compute.compute_billing_enabled ? 'compute.billingEnabledHint' : 'compute.billingHint') }}</p>
+          </template>
+        </ProductSummaryCard>
+      </div>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import type { DashboardMetric } from './types'
 import { useI18n } from 'vue-i18n'
 import { apiClient } from '@/api/client'
 import { status as adminDriveStatus } from '@/api/admin/drive'
@@ -58,6 +77,23 @@ interface APIOverview {
 const props = defineProps<{ admin?: boolean; apiStats?: APIOverview | null; apiLoading?: boolean; apiError?: boolean }>()
 const emit = defineEmits<{ refresh: [] }>()
 const { t } = useI18n()
+const active = ref<'api' | 'storage' | 'compute'>('api')
+const tabs = computed(() => [
+  { id: 'api' as const, title: 'API' },
+  { id: 'storage' as const, title: t('compute.navStorage') },
+  { id: 'compute' as const, title: t('compute.navCompute') }
+])
+async function moveTab(event: KeyboardEvent, index: number) {
+  const count = tabs.value.length
+  const target = event.key === 'ArrowRight' ? (index + 1) % count
+    : event.key === 'ArrowLeft' ? (index + count - 1) % count
+    : event.key === 'Home' ? 0 : event.key === 'End' ? count - 1 : -1
+  if (target < 0) return
+  event.preventDefault()
+  active.value = tabs.value[target].id
+  await nextTick()
+  document.getElementById(`product-tab-${active.value}`)?.focus()
+}
 interface StorageSummary { enabled:boolean; used:number; reserved:number; files:number; capacity:number|null; free:number|null; usable?:number; total?:number; checkedAt?:string|null }
 interface ComputeSummary {
   compute_units:number|null; platform_credits:number; cu_accounts_known?:number; compute_billing_enabled:boolean;
@@ -70,44 +106,46 @@ function oldest(values:(string|null|undefined)[]) { const valid = values.filter(
 function stamp(value?:string|null) { return value ? new Date(value).toLocaleString() : t('compute.dashboardUnknown') }
 function number(value:number|null|undefined, digits=0) { return value == null ? '—' : value.toLocaleString(undefined,{maximumFractionDigits:digits}) }
 function money(value:string|number|undefined) { return value == null ? '—' : Number(value).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:6}) }
-const apiMetrics = computed(() => {
+const apiMetrics = computed<DashboardMetric[]>(() => {
   const a = props.apiStats
   if (!a || props.apiError) return []
   const total = (value?: number) => `${t('common.total')}: ${number(value)}`
   return [
-    { label: t('dashboard.todayRequests'), value: number(a.today_requests), detail: total(a.total_requests) },
-    { label: t('dashboard.todayTokens'), value: number(a.today_tokens), detail: total(a.total_tokens) },
-    { label: t('compute.dashboardAPICharged'), value: money(a.today_actual_cost), detail: `${t('common.total')}: ${money(a.total_actual_cost)}` },
-    ...(props.admin ? [{ label: t('compute.dashboardAPICost'), value: money(a.today_account_cost) }] : []),
-    { label: t('dashboard.apiKeys'), value: number(a.active_api_keys)+' / '+number(a.total_api_keys), detail: t('compute.dashboardActiveTotal') },
-    ...(props.admin ? [{ label: t('admin.dashboard.accounts'), value: number(a.normal_accounts)+' / '+number(a.total_accounts), detail: t('compute.dashboardActiveTotal') }] : [])
+    { icon: 'chart', label: t('dashboard.todayRequests'), value: number(a.today_requests), detail: total(a.total_requests) },
+    { icon: 'bolt', label: t('dashboard.todayTokens'), value: number(a.today_tokens), detail: total(a.total_tokens) },
+    { icon: 'creditCard', label: t('compute.dashboardAPICharged'), value: money(a.today_actual_cost), detail: `${t('common.total')}: ${money(a.total_actual_cost)}` },
+    ...(props.admin ? [{ icon: 'database', label: t('compute.dashboardAPICost'), value: money(a.today_account_cost) }] : []),
+    { icon: 'key', label: t('dashboard.apiKeys'), value: number(a.active_api_keys)+' / '+number(a.total_api_keys), detail: t('compute.dashboardActiveTotal') },
+    ...(props.admin ? [{ icon: 'server' as const, label: t('admin.dashboard.accounts'), value: number(a.normal_accounts)+' / '+number(a.total_accounts), detail: t('compute.dashboardActiveTotal') }] : []),
+    { icon: 'clock', label: 'RPM', value: number(a.rpm) },
+    { icon: 'bolt', label: 'TPM', value: number(a.tpm) }
   ]
 })
 function refreshAll() { emit('refresh'); void load() }
 const cuCheckedAt = computed(() => oldest((compute.value?.accounts ?? []).filter(x => x.consumption?.currentBalance != null).map(x => x.consumption_checked_at)))
 const cuRefreshFailed = computed(() => compute.value?.accounts?.some(x => !!x.consumption_error))
-const storageStats = computed(() => {
+const storageStats = computed<DashboardMetric[]>(() => {
   const s=storage.value; if (!s) return []
   return [
-    {label:t(props.admin ? 'compute.dashboardStored' : 'compute.dashboardUsed'),value:formatBytes(s.used)},
-    {label:t('compute.dashboardFiles'),value:number(s.files)},
-    {label:t(props.admin ? 'compute.dashboardPoolFree' : 'compute.dashboardFree'),value:formatBytes(s.free)},
-    {label:t(props.admin ? 'compute.dashboardCapacity' : 'compute.dashboardQuota'),value:s.capacity == null ? t('compute.dashboardUnknown') : formatBytes(s.capacity)},
-    {label:t('compute.dashboardStorageReserved'),value:formatBytes(s.reserved)},
-    ...(props.admin ? [{label:t('compute.dashboardStorageAccounts'),value:`${s.usable} / ${s.total}`}] : [])
+    {icon:'folder',label:t(props.admin ? 'compute.dashboardStored' : 'compute.dashboardUsed'),value:formatBytes(s.used)},
+    {icon:'document',label:t('compute.dashboardFiles'),value:number(s.files)},
+    {icon:'database',tone:'stat-icon-success',label:t(props.admin ? 'compute.dashboardPoolFree' : 'compute.dashboardFree'),value:formatBytes(s.free)},
+    {icon:'server',label:t(props.admin ? 'compute.dashboardCapacity' : 'compute.dashboardQuota'),value:s.capacity == null ? t('compute.dashboardUnknown') : formatBytes(s.capacity)},
+    {icon:'upload',label:t('compute.dashboardStorageReserved'),value:formatBytes(s.reserved)},
+    ...(props.admin ? [{icon:'server',label:t('compute.dashboardStorageAccounts'),value:`${s.usable} / ${s.total}`}] : [])
   ]
 })
-const computeStats = computed(() => {
+const computeStats = computed<DashboardMetric[]>(() => {
   const c=compute.value; if (!c) return []; const u=c.usage_summary
   return [
-    {label:t(props.admin ? 'compute.googleCU' : 'compute.platformCredits'),value:number(props.admin ? c.compute_units : c.platform_credits,4)},
-    {label:t('compute.dashboardRunning'),value:number(u.running_jobs)},
-    {label:t('compute.dashboardQueued'),value:number(u.queued_jobs)},
-    {label:t('compute.dashboardSucceeded'),value:number(u.succeeded_jobs)+' / '+number(u.total_jobs)},
-    {label:t('compute.dashboardGPUHours'),value:number(u.gpu_runtime_seconds/3600,3)},
-    {label:t('compute.dashboardFailed'),value:number(u.failed_jobs)},
-    {label:t('compute.dashboardCharged'),value:money(u.charged_cost)},
-    {label:t('compute.dashboardHeld'),value:money(u.reserved_cost)}
+    {icon:'bolt',label:t(props.admin ? 'compute.googleCU' : 'compute.platformCredits'),value:number(props.admin ? c.compute_units : c.platform_credits,4)},
+    {icon:'play',label:t('compute.dashboardRunning'),value:number(u.running_jobs)},
+    {icon:'clock',label:t('compute.dashboardQueued'),value:number(u.queued_jobs)},
+    {icon:'checkCircle',tone:'stat-icon-success',label:t('compute.dashboardSucceeded'),value:number(u.succeeded_jobs)+' / '+number(u.total_jobs)},
+    {icon:'clock',label:t('compute.dashboardGPUHours'),value:number(u.gpu_runtime_seconds/3600,3)},
+    {icon:'exclamationCircle',tone:'stat-icon-danger',label:t('compute.dashboardFailed'),value:number(u.failed_jobs)},
+    {icon:'creditCard',label:t('compute.dashboardCharged'),value:money(u.charged_cost)},
+    {icon:'lock',tone:'stat-icon-warning',label:t('compute.dashboardHeld'),value:money(u.reserved_cost)}
   ]
 })
 async function loadStorage() {

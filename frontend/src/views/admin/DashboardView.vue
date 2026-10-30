@@ -1,144 +1,148 @@
 <template>
   <AppLayout>
     <div class="space-y-6">
-      <ResourceDashboardSummary :admin="true" :api-stats="stats" :api-loading="loading" :api-error="statsError" @refresh="loadDashboardStats" />
       <p v-if="stats" class="text-sm text-gray-500 dark:text-gray-400">
         {{ t('admin.dashboard.users') }}: {{ stats.total_users }} · {{ t('admin.dashboard.activeUsers') }}: {{ stats.active_users }} · {{ t('compute.dashboardNewUsers') }}: +{{ stats.today_new_users }}
       </p>
-      <!-- Loading State -->
-      <div v-if="loading" class="flex items-center justify-center py-12">
-        <LoadingSpinner />
-      </div>
+      <ResourceDashboardSummary :admin="true" :api-stats="stats" :api-loading="loading" :api-error="statsError" @refresh="loadDashboardStats">
+        <template #api>
+          <div class="space-y-6">
+            <!-- Loading State -->
+            <div v-if="loading" class="flex items-center justify-center py-12">
+              <LoadingSpinner />
+            </div>
 
-      <template v-else-if="stats">
-        <!-- Quick Actions -->
-        <div class="card p-4">
-          <div class="mb-3 flex items-center justify-between">
-            <h2 class="text-sm font-semibold text-gray-900 dark:text-white">
-              {{ t('admin.dashboard.quickActions') }}
-            </h2>
-          </div>
-          <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <button
-              v-if="canUseBatchImage"
-              type="button"
-              class="group flex items-center gap-3 rounded-lg bg-gray-50 p-3 text-left transition-colors hover:bg-sky-50 dark:bg-dark-800/50 dark:hover:bg-sky-900/20"
-              @click="router.push('/batch-image')"
-            >
-              <span class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-sky-100 text-sky-600 dark:bg-sky-900/30 dark:text-sky-400">
-                <Icon name="sparkles" size="md" :stroke-width="2" />
-              </span>
-              <span class="min-w-0 flex-1">
-                <span class="block text-sm font-medium text-gray-900 dark:text-white">
-                  {{ t('admin.dashboard.batchImage') }}
-                </span>
-                <span class="block text-xs text-gray-500 dark:text-gray-400">
-                  {{ t('admin.dashboard.batchImageDesc') }}
-                </span>
-              </span>
-              <Icon name="chevronRight" size="sm" class="text-gray-400 group-hover:text-sky-500" />
-            </button>
-            <button
-              type="button"
-              class="group flex items-center gap-3 rounded-lg bg-gray-50 p-3 text-left transition-colors hover:bg-emerald-50 dark:bg-dark-800/50 dark:hover:bg-emerald-900/20"
-              @click="router.push('/admin/groups')"
-            >
-              <span class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
-                <Icon name="grid" size="md" :stroke-width="2" />
-              </span>
-              <span class="min-w-0 flex-1">
-                <span class="block text-sm font-medium text-gray-900 dark:text-white">
-                  {{ t('admin.dashboard.groupPricing') }}
-                </span>
-                <span class="block text-xs text-gray-500 dark:text-gray-400">
-                  {{ t('admin.dashboard.groupPricingDesc') }}
-                </span>
-              </span>
-              <Icon name="chevronRight" size="sm" class="text-gray-400 group-hover:text-emerald-500" />
-            </button>
-          </div>
-        </div>
-
-        <h2 class="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-white"><Icon name="chart" size="md" />{{ t('compute.dashboardAPITrends') }}</h2>
-        <!-- Charts Section -->
-        <div class="space-y-6">
-          <!-- Date Range Filter -->
-          <div class="card p-4">
-            <div class="flex flex-wrap items-center gap-4">
-              <div class="flex items-center gap-2">
-                <span class="text-sm font-medium text-gray-700 dark:text-gray-300"
-                  >{{ t('admin.dashboard.timeRange') }}:</span
-                >
-                <DateRangePicker
-                  v-model:start-date="startDate"
-                  v-model:end-date="endDate"
-                  @change="onDateRangeChange"
-                />
-              </div>
-              <button @click="loadDashboardStats" :disabled="chartsLoading" class="btn btn-secondary">
-                {{ t('common.refresh') }}
-              </button>
-              <div class="ml-auto flex items-center gap-2">
-                <span class="text-sm font-medium text-gray-700 dark:text-gray-300"
-                  >{{ t('admin.dashboard.granularity') }}:</span
-                >
-                <div class="w-28">
-                  <Select
-                    v-model="granularity"
-                    :options="granularityOptions"
-                    @change="loadChartData"
-                  />
+            <template v-else-if="stats">
+              <!-- Quick Actions -->
+              <div class="card p-4">
+                <div class="mb-3 flex items-center justify-between">
+                  <h2 class="text-sm font-semibold text-gray-900 dark:text-white">
+                    {{ t('admin.dashboard.quickActions') }}
+                  </h2>
+                </div>
+                <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <button
+                    v-if="canUseBatchImage"
+                    type="button"
+                    class="group flex items-center gap-3 rounded-lg bg-gray-50 p-3 text-left transition-colors hover:bg-sky-50 dark:bg-dark-800/50 dark:hover:bg-sky-900/20"
+                    @click="router.push('/batch-image')"
+                  >
+                    <span class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-sky-100 text-sky-600 dark:bg-sky-900/30 dark:text-sky-400">
+                      <Icon name="sparkles" size="md" :stroke-width="2" />
+                    </span>
+                    <span class="min-w-0 flex-1">
+                      <span class="block text-sm font-medium text-gray-900 dark:text-white">
+                        {{ t('admin.dashboard.batchImage') }}
+                      </span>
+                      <span class="block text-xs text-gray-500 dark:text-gray-400">
+                        {{ t('admin.dashboard.batchImageDesc') }}
+                      </span>
+                    </span>
+                    <Icon name="chevronRight" size="sm" class="text-gray-400 group-hover:text-sky-500" />
+                  </button>
+                  <button
+                    type="button"
+                    class="group flex items-center gap-3 rounded-lg bg-gray-50 p-3 text-left transition-colors hover:bg-emerald-50 dark:bg-dark-800/50 dark:hover:bg-emerald-900/20"
+                    @click="router.push('/admin/groups')"
+                  >
+                    <span class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
+                      <Icon name="grid" size="md" :stroke-width="2" />
+                    </span>
+                    <span class="min-w-0 flex-1">
+                      <span class="block text-sm font-medium text-gray-900 dark:text-white">
+                        {{ t('admin.dashboard.groupPricing') }}
+                      </span>
+                      <span class="block text-xs text-gray-500 dark:text-gray-400">
+                        {{ t('admin.dashboard.groupPricingDesc') }}
+                      </span>
+                    </span>
+                    <Icon name="chevronRight" size="sm" class="text-gray-400 group-hover:text-emerald-500" />
+                  </button>
                 </div>
               </div>
-            </div>
-          </div>
 
-          <!-- Charts Grid -->
-          <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <ModelDistributionChart
-              :model-stats="modelStats"
-              :enable-ranking-view="true"
-              :ranking-items="rankingItems"
-              :ranking-total-actual-cost="rankingTotalActualCost"
-              :ranking-total-requests="rankingTotalRequests"
-              :ranking-total-tokens="rankingTotalTokens"
-              :loading="chartsLoading"
-              :ranking-loading="rankingLoading"
-              :ranking-error="rankingError"
-              :start-date="startDate"
-              :end-date="endDate"
-              @ranking-click="goToUserUsage"
-            />
-            <TokenUsageTrend :trend-data="trendData" :loading="chartsLoading" />
-          </div>
+              <!-- Charts Section -->
+              <div class="space-y-6">
+                <!-- Date Range Filter -->
+                <div class="card p-4">
+                  <div class="flex flex-wrap items-center gap-4">
+                    <div class="flex items-center gap-2">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                        >{{ t('admin.dashboard.timeRange') }}:</span
+                      >
+                      <DateRangePicker
+                        v-model:start-date="startDate"
+                        v-model:end-date="endDate"
+                        @change="onDateRangeChange"
+                      />
+                    </div>
+                    <button @click="loadDashboardStats" :disabled="chartsLoading" class="btn btn-secondary">
+                      {{ t('common.refresh') }}
+                    </button>
+                    <div class="ml-auto flex items-center gap-2">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                        >{{ t('admin.dashboard.granularity') }}:</span
+                      >
+                      <div class="w-28">
+                        <Select
+                          v-model="granularity"
+                          :options="granularityOptions"
+                          @change="loadChartData"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
-          <!-- User Usage Trend (Full Width) -->
-          <div class="card p-4">
-            <div class="mb-4 flex items-center justify-between gap-3">
-              <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.dashboard.recentUsage') }} (Top 12)</h3>
-              <div class="flex gap-1" role="group" :aria-label="t('admin.dashboard.recentUsage')">
-                <button v-for="metric in (['tokens', 'actual_cost'] as const)" :key="metric" type="button"
-                  class="rounded px-2 py-1 text-xs" :class="userTrendMetric === metric ? 'bg-blue-600 text-white' : 'text-gray-600 dark:text-gray-300'"
-                  :aria-pressed="userTrendMetric === metric" @click="setUserTrendMetric(metric)">
-                  {{ t(metric === 'tokens' ? 'admin.dashboard.tokens' : 'admin.dashboard.actualSpending') }}
-                </button>
+                <!-- Charts Grid -->
+                <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                  <ModelDistributionChart
+                    :model-stats="modelStats"
+                    :enable-ranking-view="true"
+                    :ranking-items="rankingItems"
+                    :ranking-total-actual-cost="rankingTotalActualCost"
+                    :ranking-total-requests="rankingTotalRequests"
+                    :ranking-total-tokens="rankingTotalTokens"
+                    :loading="chartsLoading"
+                    :ranking-loading="rankingLoading"
+                    :ranking-error="rankingError"
+                    :start-date="startDate"
+                    :end-date="endDate"
+                    @ranking-click="goToUserUsage"
+                  />
+                  <TokenUsageTrend :trend-data="trendData" :loading="chartsLoading" />
+                </div>
+
+                <!-- User Usage Trend (Full Width) -->
+                <div class="card p-4">
+                  <div class="mb-4 flex items-center justify-between gap-3">
+                    <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.dashboard.recentUsage') }} (Top 12)</h3>
+                    <div class="flex gap-1" role="group" :aria-label="t('admin.dashboard.recentUsage')">
+                      <button v-for="metric in (['tokens', 'actual_cost'] as const)" :key="metric" type="button"
+                        class="rounded px-2 py-1 text-xs" :class="userTrendMetric === metric ? 'bg-blue-600 text-white' : 'text-gray-600 dark:text-gray-300'"
+                        :aria-pressed="userTrendMetric === metric" @click="setUserTrendMetric(metric)">
+                        {{ t(metric === 'tokens' ? 'admin.dashboard.tokens' : 'admin.dashboard.actualSpending') }}
+                      </button>
+                    </div>
+                  </div>
+                  <div class="h-64">
+                    <div v-if="userTrendLoading" class="flex h-full items-center justify-center">
+                      <LoadingSpinner size="md" />
+                    </div>
+                    <Line v-else-if="userTrendChartData" :data="userTrendChartData" :options="lineOptions" />
+                    <div
+                      v-else
+                      class="flex h-full items-center justify-center text-sm text-gray-500 dark:text-gray-400"
+                    >
+                      {{ t('admin.dashboard.noDataAvailable') }}
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
-            <div class="h-64">
-              <div v-if="userTrendLoading" class="flex h-full items-center justify-center">
-                <LoadingSpinner size="md" />
-              </div>
-              <Line v-else-if="userTrendChartData" :data="userTrendChartData" :options="lineOptions" />
-              <div
-                v-else
-                class="flex h-full items-center justify-center text-sm text-gray-500 dark:text-gray-400"
-              >
-                {{ t('admin.dashboard.noDataAvailable') }}
-              </div>
-            </div>
+            </template>
           </div>
-        </div>
-      </template>
+        </template>
+      </ResourceDashboardSummary>
     </div>
   </AppLayout>
 </template>

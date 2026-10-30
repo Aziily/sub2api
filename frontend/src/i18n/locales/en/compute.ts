@@ -1,6 +1,5 @@
 export default {
   "dashboardNewUsers": "New users today",
-  "dashboardAPITrends": "API trends and usage",
   "dashboardUsed": "My stored files",
   "dashboardActiveTotal": "Active / total",
   "dashboardAPICost": "Account cost today (USD)",
