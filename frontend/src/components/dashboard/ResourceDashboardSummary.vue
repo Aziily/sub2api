@@ -114,7 +114,7 @@ const apiMetrics = computed<DashboardMetric[]>(() => {
     { icon: 'chart', label: t('dashboard.todayRequests'), value: number(a.today_requests), detail: total(a.total_requests) },
     { icon: 'bolt', label: t('dashboard.todayTokens'), value: number(a.today_tokens), detail: total(a.total_tokens) },
     { icon: 'creditCard', label: t('compute.dashboardAPICharged'), value: money(a.today_actual_cost), detail: `${t('common.total')}: ${money(a.total_actual_cost)}` },
-    ...(props.admin ? [{ icon: 'database', label: t('compute.dashboardAPICost'), value: money(a.today_account_cost) }] : []),
+    ...(props.admin ? [{ icon: 'database' as const, label: t('compute.dashboardAPICost'), value: money(a.today_account_cost) }] : []),
     { icon: 'key', label: t('dashboard.apiKeys'), value: number(a.active_api_keys)+' / '+number(a.total_api_keys), detail: t('compute.dashboardActiveTotal') },
     ...(props.admin ? [{ icon: 'server' as const, label: t('admin.dashboard.accounts'), value: number(a.normal_accounts)+' / '+number(a.total_accounts), detail: t('compute.dashboardActiveTotal') }] : []),
     { icon: 'clock', label: 'RPM', value: number(a.rpm) },
@@ -132,7 +132,7 @@ const storageStats = computed<DashboardMetric[]>(() => {
     {icon:'database',tone:'stat-icon-success',label:t(props.admin ? 'compute.dashboardPoolFree' : 'compute.dashboardFree'),value:formatBytes(s.free)},
     {icon:'server',label:t(props.admin ? 'compute.dashboardCapacity' : 'compute.dashboardQuota'),value:s.capacity == null ? t('compute.dashboardUnknown') : formatBytes(s.capacity)},
     {icon:'upload',label:t('compute.dashboardStorageReserved'),value:formatBytes(s.reserved)},
-    ...(props.admin ? [{icon:'server',label:t('compute.dashboardStorageAccounts'),value:`${s.usable} / ${s.total}`}] : [])
+    ...(props.admin ? [{icon:'server' as const,label:t('compute.dashboardStorageAccounts'),value:`${s.usable} / ${s.total}`}] : [])
   ]
 })
 const computeStats = computed<DashboardMetric[]>(() => {
