@@ -48,6 +48,7 @@ func ProvideAdminHandlers(
 	complianceHandler *admin.ComplianceHandler,
 	auditLogHandler *admin.AuditLogHandler,
 	googleDriveHandler *admin.GoogleDriveHandler,
+	colabHandler *admin.ColabHandler,
 	upstreamBillingProbe *service.UpstreamBillingProbeService,
 	ollamaCloudUsage *service.OllamaCloudUsageService,
 	opencodeGoUsage *service.OpenCodeGoUsageService,
@@ -95,6 +96,7 @@ func ProvideAdminHandlers(
 		Compliance:             complianceHandler,
 		AuditLog:               auditLogHandler,
 		GoogleDrive:            googleDriveHandler,
+		Colab:                  colabHandler,
 	}
 }
 
@@ -294,6 +296,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewComplianceHandler,
 	admin.NewAuditLogHandler,
 	admin.NewGoogleDriveHandler,
+	admin.NewColabHandler,
 
 	// AdminHandlers and Handlers constructors
 	ProvideAdminHandlers,

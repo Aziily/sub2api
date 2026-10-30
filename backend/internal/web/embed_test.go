@@ -713,7 +713,7 @@ func TestEmbeddedFrontendBypassesBareAPIAliases(t *testing.T) {
 		"/v3/contents/generations/tasks/task-123",
 		"/drive/v1",
 		"/drive/v1/files",
-		"/drive/v1/upload-sessions",
+		"/auth/colab/callback", "/compute/v1/jobs", "/drive/v1/upload-sessions",
 	} {
 		require.True(t, shouldBypassEmbeddedFrontend(path), "path=%s", path)
 	}

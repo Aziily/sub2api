@@ -44,6 +44,7 @@ type AdminHandlers struct {
 	Compliance             *admin.ComplianceHandler
 	AuditLog               *admin.AuditLogHandler
 	GoogleDrive            *admin.GoogleDriveHandler
+	Colab                  *admin.ColabHandler
 }
 
 // Handlers contains all HTTP handlers

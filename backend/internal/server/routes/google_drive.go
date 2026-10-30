@@ -25,6 +25,7 @@ func registerDriveFileRoutes(g gin.IRoutes, d *admin.GoogleDriveHandler, owner f
 // registerGoogleDriveRoutes mounts storage-pool operations for administrators
 // under /api/v1/admin/drive, including access to any user's drive.
 func registerGoogleDriveRoutes(adminGroup *gin.RouterGroup, h *handler.Handlers) {
+	registerColabAdminRoutes(adminGroup, h)
 	d := h.Admin.GoogleDrive
 	if d == nil {
 		return
@@ -44,6 +45,7 @@ func registerGoogleDriveRoutes(adminGroup *gin.RouterGroup, h *handler.Handlers)
 // registerUserDriveRoutes mounts the signed-in user's own drive under
 // /api/v1/user/drive.
 func registerUserDriveRoutes(user *gin.RouterGroup, h *handler.Handlers) {
+	registerColabUserRoutes(user, h)
 	if h.Admin == nil || h.Admin.GoogleDrive == nil {
 		return
 	}
@@ -61,6 +63,7 @@ var webDAVMethods = []string{"GET", "HEAD", "PUT", "DELETE", "OPTIONS", "PROPFIN
 // as the Basic username and one of the user's API keys as the password; the
 // existing API-key middleware enforces key status, IP restrictions and user status.
 func RegisterGoogleDrivePublicRoutes(r *gin.Engine, h *handler.Handlers, apiKeyAuth middleware.APIKeyAuthMiddleware) {
+	registerColabPublicRoutes(r, h, apiKeyAuth)
 	if h.Admin == nil || h.Admin.GoogleDrive == nil {
 		return
 	}

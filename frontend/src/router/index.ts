@@ -216,6 +216,12 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/compute',
+    name: 'Compute',
+    component: () => import('@/views/user/ComputeView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: false, title: 'Compute', titleKey: 'compute.title' }
+  },
+  {
     path: '/drive',
     name: 'Drive',
     component: () => import('@/views/user/DriveView.vue'),
@@ -572,6 +578,12 @@ const routes: RouteRecordRaw[] = [
       titleKey: 'admin.proxies.title',
       descriptionKey: 'admin.proxies.description'
     }
+  },
+  {
+    path: '/admin/compute',
+    name: 'AdminCompute',
+    component: () => import('@/views/user/ComputeView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, title: 'Compute operations', titleKey: 'compute.adminTitle' }
   },
   {
     path: '/admin/drive',

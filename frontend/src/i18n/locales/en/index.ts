@@ -7,8 +7,10 @@ import batchImage from './batchImage'
 import admin from './admin'
 import misc from './misc'
 import drive from './drive'
+import compute from './compute'
 
 export default {
+  compute,
   adminAccessKeys,
   ...landing,
   ...common,

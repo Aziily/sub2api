@@ -861,6 +861,7 @@ var ProviderSet = wire.NewSet(
 	ProvideAuthService,
 	NewDriveStore,
 	ProvideGoogleDriveService,
+	ProvideColabService,
 	NewPasskeyService,
 	NewUserService,
 	ProvideAPIKeyService,

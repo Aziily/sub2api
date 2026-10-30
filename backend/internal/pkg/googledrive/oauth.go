@@ -20,7 +20,10 @@ const DriveFileScope = "https://www.googleapis.com/auth/drive.file"
 const googleAuthEndpoint = "https://accounts.google.com/o/oauth2/v2/auth"
 const googleTokenEndpoint = "https://oauth2.googleapis.com/token"
 
-type OAuthConfig struct{ ClientID, ClientSecret, RedirectURI string }
+type OAuthConfig struct {
+	ClientID, ClientSecret, RedirectURI string
+	Scopes                              []string
+}
 type oauthSession struct {
 	verifier string
 	userID   int64
@@ -91,7 +94,11 @@ func (o *OAuthFlow) Start(actorID, userID int64) (string, error) {
 	}
 	o.sessions[state] = oauthSession{verifier: verifier, userID: userID, actorID: actorID, expires: time.Now().Add(10 * time.Minute)}
 	o.mu.Unlock()
-	q := url.Values{"client_id": {o.config.ClientID}, "redirect_uri": {o.config.RedirectURI}, "response_type": {"code"}, "scope": {DriveFileScope}, "access_type": {"offline"}, "prompt": {"consent"}, "state": {state}, "code_challenge": {base64.RawURLEncoding.EncodeToString(sum[:])}, "code_challenge_method": {"S256"}}
+	scopes := o.config.Scopes
+	if len(scopes) == 0 {
+		scopes = []string{DriveFileScope}
+	}
+	q := url.Values{"client_id": {o.config.ClientID}, "redirect_uri": {o.config.RedirectURI}, "response_type": {"code"}, "scope": {strings.Join(scopes, " ")}, "access_type": {"offline"}, "prompt": {"consent"}, "state": {state}, "code_challenge": {base64.RawURLEncoding.EncodeToString(sum[:])}, "code_challenge_method": {"S256"}}
 	return googleAuthEndpoint + "?" + q.Encode(), nil
 }
 

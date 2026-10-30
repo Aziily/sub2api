@@ -68,3 +68,21 @@ func TestRejectUnsafeRedirect(t *testing.T) {
 		}
 	}
 }
+
+func TestIndependentColabScope(t *testing.T) {
+	f, e := NewOAuthFlow(OAuthConfig{ClientID: "id", ClientSecret: "secret", RedirectURI: "https://example.com/auth/colab/callback", Scopes: []string{"https://www.googleapis.com/auth/colaboratory", "openid", "email"}}, nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	raw, e := f.Start(1, 0)
+	if e != nil {
+		t.Fatal(e)
+	}
+	u, e := url.Parse(raw)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if u.Query().Get("scope") != "https://www.googleapis.com/auth/colaboratory openid email" {
+		t.Fatal("wrong scopes")
+	}
+}

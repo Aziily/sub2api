@@ -1,33 +1,73 @@
-# Colab task service: implementation design (2026-10-30)
+# Colab CPU task service
 
-Status: researched design, not an enabled execution service. Existing Drive authorization has only drive.file and cannot authorize Colab. No compute balance or successful Colab execution has been verified for the connected account.
+Implementation: `feat/google-drive`. This service uses the consumer Colab API,
+not Vertex AI / Colab Enterprise. Deployment and account acceptance evidence
+belongs in the deployment repository; a built image alone is not a successful
+provider execution.
 
-## Verified provider interfaces
+## User and administrator interfaces
 
-- https://developers.google.com/colab/api/reference/rest — consumer Colab runtime create/get/list/delete, eligible runtime specs and subscription tier.
-- https://developers.google.com/colab/api/reference/rest/v1beta/TopLevel/getSubscription — requires colaboratory or colaboratory.readonly scope; returns tier, not remaining compute units.
-- https://developers.google.com/colab/api/reference/mcp/tools_list/execute_code — Python execution with incremental logs and cancellation. A stable executionId plus session allows reattachment after streaming deadline, but replaying after a final result starts a NEW execution. Persist terminal state before retrying.
-- https://github.com/googlecolab/google-colab-cli — official CLI supports ephemeral `colab run`, runtime lifecycle and artifact retrieval. Pin a reviewed version for an isolated worker; do not execute user scripts on the Sub2API host.
-- https://docs.cloud.google.com/colab/docs/reference/rest — Enterprise notebook execution jobs are a separate Google Cloud product and billing path.
+- `/compute`: submit Python (up to 64 KiB), name and 30–300 second deadline;
+  list the current user's latest 100 jobs; view captured logs and output folder;
+  request cancellation.
+- `/admin/compute`: separately authorize Colab accounts, check their subscription
+  and CPU eligibility, enable/disable scheduling, view and cancel all jobs.
+- `/compute/v1/jobs`: API-key submission, list, details and cancellation. Use
+  `tools/compute.py --base https://YOUR-HOST submit task.py`. It prompts for the
+  user's API key unless `SUB2API_API_KEY` is set. A submission UUID is printed
+  before sending; reuse `--id UUID` after a lost response. Changing the request
+  body with the same UUID is rejected.
+- `/auth/colab/callback`: public HTTPS OAuth callback. Independent PKCE/state,
+  scope and encrypted refresh credential; Drive grants are never reused.
 
-## Product and API
+## Configuration
 
-User page `/compute`: submit Python/notebook plus input paths, CPU/GPU choice, deadline and budget ceiling; list only own jobs; display queued/provisioning/running/succeeded/failed/cancelled/unknown, logs and output links in the user's drive. Show compute units only when returned by a verified provider endpoint with timestamp. Unknown is not zero. Provider compute units, platform credits and model API spend are separate measures.
+Enable `colaboratory.googleapis.com` in the Google Cloud project. Register the
+exact HTTPS callback. Set `COLAB_REDIRECT_URI`; optionally set a separate
+`COLAB_CLIENT_ID` and `COLAB_CLIENT_SECRET`. If omitted, the existing Drive OAuth
+client registration is reused, but the **grant and stored credentials remain
+independent**. Consent requests `colaboratory`, `openid`, `email`; verify the
+Google account in the consent screen. Persistent `TOTP_ENCRYPTION_KEY` is
+required. The account is schedulable only after successful subscription and
+standard-CPU eligibility checks. OAuth testing-mode refresh expiry also applies.
 
-Administrator page `/admin/compute`: independently authorized Colab accounts, subscription, eligible hardware, provider balance when obtainable, freshness/error, concurrency limit, enabled status and all job records. Do not expose tokens. Drive and compute accounts need not be the same.
+The provider returns subscription tier and eligible hardware, not remaining
+compute units. The UI explicitly says unavailable; it does not substitute model
+credits, Google Cloud trial credits or an invented zero.
 
-Proposed client: `pool compute submit train.py --input /data --output /runs --timeout 1800`; returns job ID. `status`, `logs`, `cancel`, `download` call `/compute/v1/jobs` with existing API-key authentication and user ownership checks. A notebook link remains a fallback, with explicit `manual` state rather than pretending a background execution was submitted.
+## Execution, output and recovery
 
-## Durable execution
+PostgreSQL stores accounts, jobs, ownership, submission hashes, runtime names,
+operation names, state, logs and output paths. A session advisory lock serializes
+this initial CPU pool across processes. One job owns one runtime; tenants do not
+share kernels or machines. A connection heartbeat cancels work if the worker
+loses its database lock. No submitted code is executed on the Sub2API server.
 
-Persist compute_accounts, compute_jobs, compute_attempts and append-only job events. Use transaction-based leasing (`FOR UPDATE SKIP LOCKED`), lease expiry, per-account concurrency, idempotency key plus body hash and account/budget reservation. A job owns one isolated runtime. Never reuse a runtime between tenants. A worker provisions a runtime, copies scoped inputs, executes code, uploads outputs through a job-scoped Drive capability, records terminal status and releases the runtime in cleanup. A reconciler detects leaked runtimes and unknown outcomes after crashes.
+A job provisions `VARIANT_CPU` / `NONE` / `SHAPE_STANDARD`, calls the official
+`execute_code` MCP tool once, captures its terminal result, then writes
+`stdout.txt`, `stderr.txt`, `execution.json` into `/Colab-<job UUID>` in the owner's
+virtual drive. This version saves **text outputs**, not arbitrary runtime files,
+notebooks or input datasets. The existing Drive service enforces ownership and
+storage quota. Runtime code receives no Drive OAuth token or Sub2API API key.
 
-Credentials remain in the control plane; runtime code must not receive pool OAuth refresh tokens or a user's unrestricted API key. Issue short-lived capabilities bound to job/user/path/operation/byte limit for inputs and outputs. Enforce CPU default, explicit GPU selection, maximum elapsed time and output bytes. No purchase or automatic balance top-up.
+Statuses: queued, provisioning, running, writing, succeeded, failed, cancelled,
+unknown. Cancellation is polled during blocked provider calls. Deadline includes
+provisioning, execution and output writeback. Runtime deletion is attempted after
+success/failure/cancellation, and retried by the reconciler. No new runtime is
+scheduled while an earlier owned runtime awaits cleanup. The UI shows cleanup
+separately from execution success.
 
-## Acceptance gates before enabling submission
+After a crash, in-flight jobs become unknown and their persisted runtime names
+are cleaned up. Code is never automatically replayed after an uncertain outcome;
+partial output may exist. Operations that are still provisioning are polled
+before cleanup. Queue bound: 20 active jobs. Submission UUID + body hash prevents
+accidental replay after a lost HTTP response. This is a deliberately serial CPU
+implementation, not a distributed fair-share GPU scheduler.
 
-1. Independent Colab consent with minimal scope and verified account identity; refresh survives restart.
-2. Read subscription and eligible runtimes; determine whether a supported balance endpoint exists. Keep balance unavailable otherwise.
-3. CPU hello-world using official CLI/API; verify logs, artifacts, cancellation and runtime cleanup, including failure.
-4. Queue restart/idempotency, cross-user access rejection, timeout and resource release tests.
-5. Only then enable the user submit button and production scheduler. Claims that this consumes the account's Google AI plan benefits require an actual account-level check.
+## Provider references
+
+- https://developers.google.com/colab/api/reference/rest
+- https://developers.google.com/colab/api/reference/rest/v1beta/runtimespecs/list
+- https://developers.google.com/colab/api/reference/rest/v1beta/TopLevel/getSubscription
+- https://developers.google.com/colab/api/reference/mcp/tools_list/execute_code
+- https://github.com/googlecolab/google-colab-cli
