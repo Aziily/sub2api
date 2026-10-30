@@ -413,6 +413,22 @@ func (s *ColabService) release(ctx context.Context, account int64, runtime, oper
 	if e != nil {
 		return false
 	}
+	if operation == "pending" {
+		// Recover the *same* idempotent allocation after a lost response.
+		// A 404 for its runtime alone does not prove provisioning never started.
+		id := strings.TrimPrefix(runtime, "runtimes/pool-")
+		var op colab.Operation
+		if c.JSON(ctx, "POST", allocationPath(runtime, id), cpuRuntimeBody(), &op) != nil {
+			return false
+		}
+		operation = op.Name
+		if _, e = s.store.db.ExecContext(ctx, `UPDATE colab_jobs SET operation_name=$2 WHERE runtime_name=$1`, runtime, operation); e != nil {
+			return false
+		}
+		if !op.Done {
+			return false
+		}
+	}
 	if operation != "" {
 		var op colab.Operation
 		if c.JSON(ctx, "GET", "/v1/"+operation, nil, &op) != nil || !op.Done {
@@ -470,7 +486,7 @@ func (s *ColabService) run(parent context.Context, j *ComputeJob) {
 	_, _ = s.store.db.ExecContext(parent, `UPDATE colab_jobs SET status=$2,error=$3,updated_at=now() WHERE id=$1`, j.ID, final, message)
 	cleanup, stop := context.WithTimeout(context.Background(), 60*time.Second)
 	defer stop()
-	if s.release(cleanup, *j.AccountID, j.Runtime, j.Operation) {
+	if !j.Released && s.release(cleanup, *j.AccountID, j.Runtime, j.Operation) {
 		_, _ = s.store.db.ExecContext(cleanup, `UPDATE colab_jobs SET runtime_released=true WHERE id=$1`, j.ID)
 	}
 }
@@ -480,9 +496,17 @@ func (s *ColabService) execute(ctx context.Context, j *ComputeJob) error {
 		return e
 	}
 	var op colab.Operation
-	body := map[string]any{"runtimeSpec": map[string]string{"variant": "VARIANT_CPU", "accelerator": "NONE", "shape": "SHAPE_STANDARD"}}
-	e = c.JSON(ctx, "POST", "/v1beta/runtimes?runtimeId="+strings.TrimPrefix(j.Runtime, "runtimes/")+"&requestId="+j.ID, body, &op)
+	j.Operation = "pending"
+	if _, e = s.store.db.ExecContext(ctx, `UPDATE colab_jobs SET operation_name='pending' WHERE id=$1`, j.ID); e != nil {
+		return e
+	}
+	e = c.JSON(ctx, "POST", allocationPath(j.Runtime, j.ID), cpuRuntimeBody(), &op)
 	if e != nil {
+		var api *colab.APIError
+		if errors.As(e, &api) && api.Status >= 400 && api.Status < 500 && api.Status != 409 {
+			j.Released = true
+			_, _ = s.store.db.ExecContext(context.Background(), `UPDATE colab_jobs SET runtime_released=true WHERE id=$1`, j.ID)
+		}
 		return e
 	}
 	j.Operation = op.Name
@@ -537,4 +561,11 @@ func (s *ColabService) execute(ctx context.Context, j *ComputeJob) error {
 		return errors.New("Python execution failed; see logs and execution.json")
 	}
 	return nil
+}
+
+func cpuRuntimeBody() map[string]any {
+	return map[string]any{"runtimeSpec": map[string]string{"variant": "VARIANT_CPU", "accelerator": "NONE", "shape": "SHAPE_STANDARD"}}
+}
+func allocationPath(runtime, id string) string {
+	return "/v1beta/runtimes?runtimeId=" + strings.TrimPrefix(runtime, "runtimes/") + "&requestId=" + id
 }
