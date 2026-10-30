@@ -118,7 +118,7 @@
           <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <label v-for="hw in status?.hardware_options || []" :key="hw.id" class="text-xs text-gray-500">
               {{ hw.label }} · {{ t("compute.rateUnit") }}
-              <input v-model="pricingDraft.rates[hw.id]" type="number" min="0" max="1000000" step="0.000001" :required="pricingDraft.enabled && hw.eligible" class="input mt-1 w-full" :aria-label="hw.label + ' ' + t('compute.rateUnit')" />
+              <input v-model="pricingDraft.rates[hw.id]" type="number" min="0" max="1000000" step="0.000001" class="input mt-1 w-full" :aria-label="hw.label + ' ' + t('compute.rateUnit')" />
             </label>
           </div>
           <p class="text-xs text-gray-500">{{ t("compute.pricingHint") }}</p>
@@ -151,7 +151,7 @@
             />
             <div>
               <p class="text-sm font-semibold">{{ hw.label }}</p>
-              <p v-if="status?.compute_billing_enabled" class="mt-1 text-xs text-primary-600">{{ status.pricing?.rates[hw.id] ?? '—' }} {{ t("compute.rateUnit") }}</p>
+              <p v-if="status?.compute_billing_enabled" class="mt-1 text-xs text-primary-600">{{ status.pricing?.rates[hw.id] != null ? status.pricing.rates[hw.id] + ' ' + t("compute.rateUnit") : t("compute.priceMissing") }}</p>
               <p class="mt-1 text-xs text-gray-500">
                 {{
                   hw.accelerator === "NONE"
@@ -350,10 +350,10 @@
                   v-for="hw in hardwareChoices"
                   :key="hw.id"
                   :value="hw.id"
-                  :disabled="!hw.eligible"
+                  :disabled="!canSubmitHardware(hw.id)"
                 >
                   {{ hw.label }} ({{
-                    t(hw.eligible ? "compute.eligible" : "compute.ineligible")
+                    t(canSubmitHardware(hw.id) ? "compute.eligible" : "compute.priceMissing")
                   }})
                 </option>
               </select>
@@ -383,7 +383,7 @@
             <p class="max-w-2xl text-xs text-gray-500">
               {{ t("compute.outputHelp") }}
             </p>
-            <button class="btn btn-primary" :disabled="busy || !status?.ready">
+            <button class="btn btn-primary" :disabled="busy || !status?.ready || !canSubmitHardware(hardware)">
               {{ t("compute.submit") }}
             </button>
           </div>
@@ -614,6 +614,9 @@ const title = ref("CPU smoke test"),
 const hardwareChoices = computed<HardwareOption[]>(
   () => status.value?.hardware_options?.filter((hw) => hw.eligible) || [],
 );
+function canSubmitHardware(id: string) {
+  return !!hardwareChoices.value.find(hw => hw.id === id) && (!status.value?.compute_billing_enabled || status.value?.pricing?.rates[id] != null);
+}
 const resourceChoices = computed(() => hardwareChoices.value.filter(hw => !hw.high_mem));
 const cliExample = computed(
   () => `export SUB2API_BASE_URL="${window.location.origin}"
@@ -674,8 +677,8 @@ async function load() {
     else error.value = errorText(s.reason);
     if (j.status === 'fulfilled') jobs.value = j.value.data;
     else error.value = errorText(j.reason);
-    if (!hardwareChoices.value.some((hw) => hw.id === hardware.value))
-      hardware.value = hardwareChoices.value[0]?.id || "";
+    if (!canSubmitHardware(hardware.value))
+      hardware.value = hardwareChoices.value.find(hw => canSubmitHardware(hw.id))?.id || "";
     if (selected.value) await show(selected.value.id);
   } catch (e) {
     error.value = errorText(e);

@@ -295,7 +295,9 @@ func (s *ColabService) Status(ctx context.Context, user int64, admin bool) (map[
 		hwLabel = strings.Join(hwNames, " / ")
 	}
 	var totalJobs, succeededJobs, totalSec, gpuSec, a100Sec int
-	e = s.store.db.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(CASE WHEN status='succeeded' THEN 1 ELSE 0 END), 0), COALESCE(SUM(GREATEST(0, EXTRACT(EPOCH FROM (COALESCE(released_at, now()) - allocated_at))::int)), 0), COALESCE(SUM(CASE WHEN hardware NOT IN ('CPU','CPU_HIGHMEM') THEN GREATEST(0, EXTRACT(EPOCH FROM (COALESCE(released_at, now()) - allocated_at))::int) ELSE 0 END), 0), COALESCE(SUM(CASE WHEN hardware IN ('A100','A100_HIGHMEM') THEN GREATEST(0, EXTRACT(EPOCH FROM (COALESCE(released_at, now()) - allocated_at))::int) ELSE 0 END), 0) FROM colab_jobs WHERE user_id=$1 OR $2`, user, admin).Scan(&totalJobs, &succeededJobs, &totalSec, &gpuSec, &a100Sec)
+	var queuedJobs, runningJobs, failedJobs int
+	var chargedCost, reservedCost decimal.Decimal
+	e = s.store.db.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(CASE WHEN status='succeeded' THEN 1 ELSE 0 END), 0), COALESCE(SUM(GREATEST(0, EXTRACT(EPOCH FROM (COALESCE(released_at, now()) - allocated_at))::int)), 0), COALESCE(SUM(CASE WHEN hardware NOT IN ('CPU','CPU_HIGHMEM') THEN GREATEST(0, EXTRACT(EPOCH FROM (COALESCE(released_at, now()) - allocated_at))::int) ELSE 0 END), 0), COALESCE(SUM(CASE WHEN hardware IN ('A100','A100_HIGHMEM') THEN GREATEST(0, EXTRACT(EPOCH FROM (COALESCE(released_at, now()) - allocated_at))::int) ELSE 0 END), 0), COUNT(*) FILTER (WHERE status='queued'), COUNT(*) FILTER (WHERE status IN ('provisioning','running','writing')), COUNT(*) FILTER (WHERE status IN ('failed','unknown')), COALESCE(SUM(charged_cost),0), COALESCE(SUM(reserved_cost) FILTER (WHERE billing_status='reserved'),0) FROM colab_jobs WHERE user_id=$1 OR $2`, user, admin).Scan(&totalJobs, &succeededJobs, &totalSec, &gpuSec, &a100Sec, &queuedJobs, &runningJobs, &failedJobs, &chargedCost, &reservedCost)
 	if e != nil {
 		return nil, e
 	}
@@ -317,6 +319,11 @@ func (s *ColabService) Status(ctx context.Context, user int64, admin bool) (map[
 	storageReady := storage != nil && storage.Enabled && (storage.AvailableBytes == nil || *storage.AvailableBytes > 0)
 	usageSummary := map[string]any{
 		"total_jobs":            totalJobs,
+		"queued_jobs":           queuedJobs,
+		"running_jobs":          runningJobs,
+		"failed_jobs":           failedJobs,
+		"charged_cost":          chargedCost,
+		"reserved_cost":         reservedCost,
 		"succeeded_jobs":        succeededJobs,
 		"total_runtime_seconds": totalSec,
 		"gpu_runtime_seconds":   gpuSec,

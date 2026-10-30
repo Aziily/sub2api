@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"github.com/DATA-DOG/go-sqlmock"
 	"strings"
 	"testing"
@@ -52,7 +53,7 @@ func TestComputeUserStatusIsScoped(t *testing.T) {
 	s := &ColabService{store: &DriveStore{db: db}, drive: &GoogleDriveService{}}
 	m.ExpectQuery(`SELECT id,email,enabled,subscription,runtime_specs,last_error,checked_at,consumption,consumption_checked_at,consumption_error FROM colab_accounts`).WillReturnRows(sqlmock.NewRows([]string{"id", "email", "enabled", "subscription", "runtime_specs", "last_error", "checked_at", "consumption", "consumption_checked_at", "consumption_error"}))
 	m.ExpectQuery(`SELECT account_id, COUNT`).WillReturnRows(sqlmock.NewRows([]string{"account_id", "count", "total", "gpu", "a100"}))
-	m.ExpectQuery(`SELECT COUNT\(\*\).*FROM colab_jobs WHERE user_id=\$1 OR \$2`).WithArgs(int64(42), false).WillReturnRows(sqlmock.NewRows([]string{"count", "succeeded", "total", "gpu", "a100"}).AddRow(2, 1, 20, 10, 0))
+	m.ExpectQuery(`SELECT COUNT\(\*\).*FROM colab_jobs WHERE user_id=\$1 OR \$2`).WithArgs(int64(42), false).WillReturnRows(sqlmock.NewRows([]string{"count", "succeeded", "total", "gpu", "a100", "queued", "running", "failed", "charged", "reserved"}).AddRow(2, 1, 20, 10, 0, 1, 0, 0, "0.042", "0.3"))
 	m.ExpectQuery(`SELECT balance FROM users WHERE id=\$1`).WithArgs(int64(42)).WillReturnRows(sqlmock.NewRows([]string{"balance"}).AddRow(12.5))
 	m.ExpectQuery(`SELECT enabled,version,rates FROM compute_pricing`).WillReturnRows(sqlmock.NewRows([]string{"enabled", "version", "rates"}).AddRow(false, 1, `{}`))
 	out, e := s.Status(context.Background(), 42, false)
@@ -61,6 +62,13 @@ func TestComputeUserStatusIsScoped(t *testing.T) {
 	}
 	if _, ok := out["accounts"]; ok {
 		t.Fatal("accounts leaked")
+	}
+	summary := out["usage_summary"].(map[string]any)
+	if summary["queued_jobs"] != 1 || fmt.Sprint(summary["charged_cost"]) != "0.042" || fmt.Sprint(summary["reserved_cost"]) != "0.3" {
+		t.Fatalf("wrong scoped aggregate: %v", summary)
+	}
+	if out["compute_units"] != nil {
+		t.Fatal("Google CU leaked to user")
 	}
 	if out["platform_credits"] != 12.5 {
 		t.Fatal("wrong credits")

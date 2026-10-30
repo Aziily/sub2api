@@ -1,0 +1,36 @@
+import { mount, flushPromises } from '@vue/test-utils'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import ResourceDashboardSummary from '../ResourceDashboardSummary.vue'
+const { get, driveStatus, overview } = vi.hoisted(()=>({get:vi.fn(),driveStatus:vi.fn(),overview:vi.fn()}))
+vi.mock('@/api/client',()=>({apiClient:{get}}))
+vi.mock('@/api/admin/drive',()=>({status:driveStatus}))
+vi.mock('@/api/drive',()=>({myDrive:{overview},formatBytes:(v:unknown)=>v==null?'-':`${v} bytes`}))
+vi.mock('vue-i18n',()=>({useI18n:()=>({t:(key:string)=>key})}))
+const usage={total_jobs:7,succeeded_jobs:4,running_jobs:1,queued_jobs:2,failed_jobs:0,gpu_runtime_seconds:3600,charged_cost:'0.123',reserved_cost:'0.3'}
+const options={global:{stubs:{Icon:true,ComputeIcon:true,RouterLink:{props:['to'],template:'<a :href="to"><slot /></a>'}}}}
+afterEach(()=>{vi.clearAllMocks()})
+describe('Resource dashboard',()=>{
+ it('loads only user endpoints and never shows upstream CU or accounts',async()=>{
+  overview.mockResolvedValue({overview:{enabled:true,used_bytes:123,file_count:3,quota_bytes:1000,available_bytes:877,reserved_bytes:0}})
+  get.mockResolvedValue({data:{platform_credits:5,compute_units:999,accounts:[{email:'private@example.com'}],usage_summary:usage}})
+  const w=mount(ResourceDashboardSummary,options);await flushPromises()
+  expect(get).toHaveBeenCalledWith('/user/compute');expect(driveStatus).not.toHaveBeenCalled()
+  expect(w.text()).toContain('123 bytes');expect(w.text()).toContain('0.123')
+  expect(w.text()).not.toContain('999');expect(w.text()).not.toContain('private@example.com');expect(w.text()).not.toContain('compute.googleCU')
+  expect(w.find('a[href="/drive"]').exists()).toBe(true);w.unmount()
+ })
+ it('shows pool usage separately from upstream capacity, CU and billing',async()=>{
+  driveStatus.mockResolvedValue({enabled:true,pool:{usable_accounts:1,accounts:2,capacity_bytes:5000,free_bytes:4000,stored_bytes:123,file_count:3},users:[{reserved_bytes:10}],accounts:[]})
+  get.mockResolvedValue({data:{compute_units:199.61576,cu_accounts_known:1,accounts:[{consumption_error:'unavailable'}],usage_summary:usage,compute_billing_enabled:true}})
+  const w=mount(ResourceDashboardSummary,{...options,props:{admin:true}});await flushPromises()
+  expect(get).toHaveBeenCalledWith('/admin/compute');expect(overview).not.toHaveBeenCalled()
+  expect(w.text()).toContain('199.6158');expect(w.text()).toContain('5000 bytes');expect(w.text()).toContain('123 bytes');expect(w.text()).toContain('compute.cuStale')
+  expect(w.find('a[href="/admin/compute"]').exists()).toBe(true);w.unmount()
+ })
+ it('keeps independent failures explicit instead of showing zero',async()=>{
+  driveStatus.mockRejectedValue(new Error('offline'));get.mockRejectedValue(new Error('offline'))
+  const w=mount(ResourceDashboardSummary,{...options,props:{admin:true}});await flushPromises()
+  expect(w.findAll('[role="alert"]')).toHaveLength(2)
+  expect(w.find('dl').exists()).toBe(false);w.unmount()
+ })
+})

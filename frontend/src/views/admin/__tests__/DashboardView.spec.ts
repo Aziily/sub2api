@@ -125,6 +125,7 @@ describe('admin DashboardView', () => {
     getUserUsageTrend.mockResolvedValueOnce({ trend: [{ date: '2026-01-01', user_id: 2, username: 'spender', email: '', requests: 1, tokens: 10, cost: 5, actual_cost: 5 }] })
     const wrapper = mount(DashboardView, {
       global: { stubs: {
+          ResourceDashboardSummary: true,
         AppLayout: { template: '<div><slot /></div>' }, LoadingSpinner: true,
         Icon: true, DateRangePicker: true, Select: true, ModelDistributionChart: true,
         TokenUsageTrend: true
@@ -147,6 +148,7 @@ describe('admin DashboardView', () => {
     mount(DashboardView, {
       global: {
         stubs: {
+          ResourceDashboardSummary: true,
           AppLayout: { template: '<div><slot /></div>' },
           LoadingSpinner: true,
           Icon: true,

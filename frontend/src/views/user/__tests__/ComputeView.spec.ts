@@ -61,4 +61,13 @@ describe("Compute resource view", () => {
     expect(w.text()).not.toContain("999");w.unmount();
   });
 
+  it("selects priced hardware and disables eligible but unpriced hardware", async () => {
+    mocks.get.mockImplementation((path:string)=>Promise.resolve({data:path.endsWith("/jobs")?[]:{ready:true,compute_billing_enabled:true,pricing:{enabled:true,version:4,rates:{A100:"0.81602"}},hardware_options:[{id:"CPU",label:"CPU",eligible:true},{id:"A100",label:"A100",eligible:true}]}}));
+    const w=mount(ComputeView,{global:{stubs:{RouterLink:{template:"<a><slot /></a>"}}}});
+    await flushPromises();
+    expect((w.get('select').element as HTMLSelectElement).value).toBe('A100');
+    expect(w.get('option[value="CPU"]').attributes('disabled')).toBeDefined();
+    expect(w.text()).toContain('compute.priceMissing');w.unmount();
+  });
+
 });
