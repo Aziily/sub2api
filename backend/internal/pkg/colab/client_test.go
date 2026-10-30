@@ -77,3 +77,19 @@ func TestHardwareEligibilityAndSummary(t *testing.T) {
 		t.Fatalf("unexpected A100 runtime body: %#v", body)
 	}
 }
+
+func TestRejectIncompleteJSONExecution(t *testing.T) {
+	for _, body := range []string{`{"method":"notifications/progress"}`, `{"id":null,"result":{}}`, `{"id":2,"result":{}}`, `{"id":1,"result":{"structuredContent":null}}`} {
+		t.Run(body, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				fmt.Fprint(w, body)
+			}))
+			defer srv.Close()
+			c := Client{Base: srv.URL}
+			if out, err := c.Execute(context.Background(), "runtimes/test", "id", "print(1)"); err == nil || out != nil {
+				t.Fatalf("incomplete response accepted: %+v, %v", out, err)
+			}
+		})
+	}
+}

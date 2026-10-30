@@ -64,7 +64,7 @@ def workspace_files(root, outputs):
         for name in sorted(files):
             p = Path(directory) / name
             rel = p.relative_to(root).as_posix()
-            if p.is_symlink() or name.startswith('.') or any(fnmatch.fnmatch(name, x) for x in SECRET_PATTERNS):
+            if p.is_symlink() or not p.is_file() or name.startswith('.') or any(fnmatch.fnmatch(name, x) for x in SECRET_PATTERNS):
                 continue
             if any(rel == x or rel.startswith(x.rstrip('/') + '/') or fnmatch.fnmatch(rel, x) for x in [*rules, *outputs]):
                 continue
@@ -96,10 +96,10 @@ class Client:
             raise ValueError('Compressed workspace exceeds 64 MiB')
         ticket = self.call('/drive/v1/upload-sessions', {'path': '/', 'name': name, 'size': size, 'mime_type': 'application/zip'})
         # A file-scoped Google upload URL; never send the platform key to Google.
-        target = urllib.parse.urlsplit(ticket['upload_url'])
-        if target.scheme != 'https' or target.hostname != 'www.googleapis.com':
-            raise ValueError('Unexpected Drive upload host')
         try:
+            target = urllib.parse.urlsplit(ticket['upload_url'])
+            if target.scheme != 'https' or target.hostname != 'www.googleapis.com' or target.username or target.password:
+                raise ValueError('Unexpected Drive upload host')
             with archive.open('rb') as body:
                 request = urllib.request.Request(ticket['upload_url'], data=body, method='PUT',
                     headers={'Content-Type': 'application/zip', 'Content-Length': str(size)})
@@ -107,7 +107,10 @@ class Client:
                     response.read()
             self.call('/drive/v1/uploads/' + str(ticket['upload_id']) + '/complete', {})
         except BaseException:
-            self.call('/drive/v1/uploads/' + str(ticket['upload_id']), method='DELETE')
+            try:
+                self.call('/drive/v1/uploads/' + str(ticket['upload_id']), method='DELETE')
+            except Exception:
+                pass  # Preserve the transfer error; the reservation also expires server-side.
             raise
         return ticket['path']
 
@@ -143,8 +146,8 @@ class Client:
                 try:
                     manifest[name] = self.download(job['output_path'].rstrip('/') + '/' + name, stage/name, limit)
                 except urllib.error.HTTPError as e:
-                    if e.code == 404 and name == 'artifacts.zip' and not job.get('workspace'):
-                        continue  # Standalone Python jobs have logs but no workspace archive.
+                    if e.code == 404 and name == 'artifacts.zip' and (not job.get('workspace') or job['status'] != 'succeeded'):
+                        continue  # Failed setup may produce logs without a workspace archive.
                     raise
             if (stage/'artifacts.zip').exists():
                 extract_outputs(stage/'artifacts.zip', stage/'files')

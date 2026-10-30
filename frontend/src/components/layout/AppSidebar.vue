@@ -822,7 +822,13 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
 // finalizeNav 合并三重过滤：featureFlag 过滤 + simple 模式过滤。
 function finalizeNav(items: NavItem[]): NavItem[] {
   const visible = applyFeatureFlags(items)
-  return visible.filter(item => !authStore.isSimpleMode || !item.hideInSimpleMode).map(item => ({ ...item, children: item.children ? finalizeNav(item.children) : undefined })).filter(item => !item.expandOnly || !item.children || item.children.length > 0)
+  return visible
+    .filter(item => !authStore.isSimpleMode || !item.hideInSimpleMode)
+    .map(item => ({
+      ...item,
+      children: item.children ? finalizeNav(item.children) : undefined
+    }))
+    .filter(item => !item.expandOnly || !item.children || item.children.length > 0)
 }
 
 // Product sections contain their accounts and usage. General administration

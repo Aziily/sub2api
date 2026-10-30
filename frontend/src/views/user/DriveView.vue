@@ -6,7 +6,7 @@
           <div>
             <h1 class="flex items-center gap-2 text-xl font-bold text-gray-900 dark:text-white">
               <span class="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-300">
-                <CloudDriveGlyph class="h-5 w-5" />
+                <StorageIcon class="h-5 w-5" />
               </span>
               {{ t('drive.title') }}
             </h1>
@@ -30,11 +30,11 @@
         <div class="mb-3 flex flex-wrap items-end justify-between gap-2">
           <div>
             <p class="text-xs text-gray-500">{{ t('drive.used') }}</p>
-            <p class="text-2xl font-bold text-gray-900 dark:text-white" data-testid="drive-used">{{ formatBytes(overview?.used_bytes ?? 0) }}</p>
+            <p class="text-2xl font-bold text-gray-900 dark:text-white" data-testid="drive-used">{{ formatBytes(overview?.used_bytes) }}</p>
           </div>
           <p class="text-sm text-gray-500">
             <template v-if="overview?.quota_bytes != null">{{ t('drive.ofQuota', { quota: formatBytes(overview.quota_bytes) }) }}</template>
-            <template v-else>{{ t('drive.noQuota') }}</template>
+            <template v-else-if="overview">{{ t('drive.noQuota') }}</template>
           </p>
         </div>
         <div v-if="overview?.quota_bytes" class="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-dark-700">
@@ -44,20 +44,20 @@
           <div>
             <dt class="text-xs text-gray-500">{{ t('drive.available') }}</dt>
             <dd class="mt-1 font-semibold text-gray-900 dark:text-white">
-              {{ overview?.available_bytes == null ? t('drive.unlimited') : formatBytes(overview.available_bytes) }}
+              {{ !overview ? '—' : overview.available_bytes == null ? t('drive.unlimited') : formatBytes(overview.available_bytes) }}
             </dd>
           </div>
           <div>
             <dt class="text-xs text-gray-500">{{ t('drive.files') }}</dt>
-            <dd class="mt-1 font-semibold text-gray-900 dark:text-white" data-testid="drive-file-count">{{ overview?.file_count ?? 0 }}</dd>
+            <dd class="mt-1 font-semibold text-gray-900 dark:text-white" data-testid="drive-file-count">{{ overview?.file_count ?? '—' }}</dd>
           </div>
           <div>
             <dt class="text-xs text-gray-500">{{ t('drive.folders') }}</dt>
-            <dd class="mt-1 font-semibold text-gray-900 dark:text-white">{{ overview?.folder_count ?? 0 }}</dd>
+            <dd class="mt-1 font-semibold text-gray-900 dark:text-white">{{ overview?.folder_count ?? '—' }}</dd>
           </div>
           <div>
             <dt class="text-xs text-gray-500">{{ t('drive.uploadingNow') }}</dt>
-            <dd class="mt-1 font-semibold text-gray-900 dark:text-white">{{ formatBytes(overview?.reserved_bytes ?? 0) }}</dd>
+            <dd class="mt-1 font-semibold text-gray-900 dark:text-white">{{ formatBytes(overview?.reserved_bytes) }}</dd>
           </div>
         </dl>
       </section>
@@ -86,7 +86,7 @@
         </dl>
         <div class="rounded-xl bg-gray-50 p-3 text-xs leading-relaxed text-gray-500 dark:bg-dark-900/40 dark:text-gray-400">
           <p>{{ t('drive.finderHint') }}</p>
-          <p class="mt-1">{{ t('drive.limitHint', { size: formatBytes(overview?.max_relay_bytes ?? 0) }) }}</p>
+          <p v-if="overview" class="mt-1">{{ t('drive.limitHint', { size: formatBytes(overview?.max_relay_bytes ?? 0) }) }}</p>
         </div>
       </section>
     </div>
@@ -103,7 +103,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
@@ -112,20 +112,8 @@ import { extractApiErrorMessage } from '@/utils/apiError'
 import { formatBytes, myDrive, type DriveOverview } from '@/api/drive'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import DriveFileDrawer from '@/components/drive/DriveFileDrawer.vue'
+import StorageIcon from '@/components/icons/StorageIcon.vue'
 import Icon from '@/components/icons/Icon.vue'
-
-const CloudDriveGlyph = {
-  render: () =>
-    h('svg', { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' }, [
-      h('path', {
-        'stroke-linecap': 'round',
-        'stroke-linejoin': 'round',
-        d: 'M2.25 14.25a4.5 4.5 0 004.5 4.5H18a3.75 3.75 0 001.332-7.257 3 3 0 00-3.758-3.848 5.25 5.25 0 00-10.233 2.33A4.502 4.502 0 002.25 14.25z'
-      }),
-      h('path', { 'stroke-linecap': 'round', d: 'M8.25 15h5.25' }),
-      h('path', { 'stroke-linecap': 'round', d: 'M15.75 15h.01' })
-    ])
-}
 
 const { t } = useI18n()
 const appStore = useAppStore()

@@ -244,25 +244,22 @@ func (s *ColabService) Accounts(ctx context.Context) ([]ComputeAccount, error) {
 	if e != nil {
 		return nil, e
 	}
-	if e == nil {
-		defer uRows.Close()
-		byID := map[int64]int{}
-		for i := range out {
-			byID[out[i].ID] = i
+	defer uRows.Close()
+	byID := map[int64]int{}
+	for i := range out {
+		byID[out[i].ID] = i
+	}
+	for uRows.Next() {
+		var aid int64
+		var cnt, tot, gpu, a100 int
+		if e = uRows.Scan(&aid, &cnt, &tot, &gpu, &a100); e != nil {
+			return nil, e
 		}
-		for uRows.Next() {
-			var aid int64
-			var cnt, tot, gpu, a100 int
-			if e = uRows.Scan(&aid, &cnt, &tot, &gpu, &a100); e != nil {
-				return nil, e
-			} else {
-				if idx, ok := byID[aid]; ok {
-					out[idx].JobCount = cnt
-					out[idx].TotalRuntimeSeconds = tot
-					out[idx].GPURuntimeSeconds = gpu
-					out[idx].A100RuntimeSeconds = a100
-				}
-			}
+		if idx, ok := byID[aid]; ok {
+			out[idx].JobCount = cnt
+			out[idx].TotalRuntimeSeconds = tot
+			out[idx].GPURuntimeSeconds = gpu
+			out[idx].A100RuntimeSeconds = a100
 		}
 	}
 	return out, uRows.Err()
@@ -388,9 +385,11 @@ func (s *ColabService) Submit(ctx context.Context, user int64, id, title, code, 
 		code = "# Workspace task: " + strings.Join(ws.Command, " ")
 	}
 	hwSpec, hwOK := colab.LookupHardware(hardware)
-	if _, e := uuid.Parse(id); e != nil || !hwOK || len(code) == 0 || len(code) > 65536 || len(title) > 120 || timeout < 30 || timeout > 3600 {
+	parsedID, parseErr := uuid.Parse(id)
+	if parseErr != nil || !hwOK || len(code) == 0 || len(code) > 65536 || len(title) > 120 || timeout < 30 || timeout > 3600 {
 		return nil, os.ErrInvalid
 	}
+	id = parsedID.String()
 	hash := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%s\x00%s\x00%d", title, code+string(workspaceJSON), hwSpec.ID, timeout)))
 	hs := hex.EncodeToString(hash[:])
 	tx, e := s.store.db.BeginTx(ctx, nil)
@@ -429,14 +428,20 @@ func (s *ColabService) Submit(ctx context.Context, user int64, id, title, code, 
 	hwEligible := false
 	for specRows.Next() {
 		var raw []byte
-		if specRows.Scan(&raw) == nil {
-			anyAccount = true
-			if colab.HardwareEligible(raw, hwSpec.ID) {
-				hwEligible = true
-			}
+		if e = specRows.Scan(&raw); e != nil {
+			specRows.Close()
+			return nil, e
+		}
+		anyAccount = true
+		if colab.HardwareEligible(raw, hwSpec.ID) {
+			hwEligible = true
 		}
 	}
+	e = specRows.Err()
 	specRows.Close()
+	if e != nil {
+		return nil, e
+	}
 	if !anyAccount {
 		return nil, ErrComputeUnavailable
 	}
@@ -566,7 +571,11 @@ func (s *ColabService) workerTick() {
 		}
 		left = append(left, p)
 	}
+	e = rows.Err()
 	rows.Close()
+	if e != nil {
+		return
+	}
 	for _, p := range left {
 		if !s.release(ctx, p.account, p.runtime, p.operation, p.hardware) {
 			return
@@ -589,14 +598,22 @@ func (s *ColabService) workerTick() {
 	for accRows.Next() {
 		var aid int64
 		var raw []byte
-		if accRows.Scan(&aid, &raw) == nil && colab.HardwareEligible(raw, hw) {
+		if e = accRows.Scan(&aid, &raw); e != nil {
+			accRows.Close()
+			return
+		}
+		if colab.HardwareEligible(raw, hw) {
 			account = aid
 			break
 		}
 	}
+	e = accRows.Err()
 	accRows.Close()
+	if e != nil {
+		return
+	}
 	if account == 0 {
-		_, _ = conn.ExecContext(ctx, `UPDATE colab_jobs SET status='failed',error='No enabled Colab account is eligible for requested hardware',updated_at=now() WHERE id=$1`, id)
+		_, _ = conn.ExecContext(ctx, `UPDATE colab_jobs SET status='failed',error='No enabled Colab account is eligible for requested hardware',updated_at=now() WHERE id=$1 AND status='queued' AND NOT cancel_requested`, id)
 		return
 	}
 	runtime := "runtimes/pool-" + id
@@ -766,27 +783,18 @@ func (s *ColabService) execute(ctx context.Context, j *ComputeJob) error {
 	if e = s.drive.Mkdir(ctx, j.UserID, dir); e != nil && !errors.Is(e, os.ErrExist) {
 		return e
 	}
-	if len(j.Workspace) > 0 && string(j.Workspace) != "null" {
-		if e = s.saveWorkspaceOutput(ctx, c, j, dir); e != nil {
-			return e
-		}
-	}
-	raw, e := json.MarshalIndent(result, "", "  ")
-	if e != nil {
-		return e
-	}
-	for name, data := range map[string][]byte{"execution.json": raw, "stdout.txt": []byte(result.Stdout), "stderr.txt": []byte(result.Stderr)} {
-		if e = s.drive.Upload(ctx, j.UserID, dir+"/"+name, "text/plain", int64(len(data)), bytes.NewReader(data)); e != nil {
-			return fmt.Errorf("Drive output writeback failed: %w", e)
-		}
-	}
+	// Publish the directory first, so partial writeback is still discoverable.
 	if _, e = s.store.db.ExecContext(ctx, `UPDATE colab_jobs SET output_path=$2 WHERE id=$1`, j.ID, dir); e != nil {
 		return e
 	}
-	if len(result.ExecutionError) > 0 && string(result.ExecutionError) != "null" {
-		return errors.New("Python execution failed; see logs and execution.json")
-	}
-	return nil
+	return writeComputeOutput(result, func(name, mime string, data []byte) error {
+		return s.drive.Upload(ctx, j.UserID, dir+"/"+name, mime, int64(len(data)), bytes.NewReader(data))
+	}, func() error {
+		if len(j.Workspace) > 0 && string(j.Workspace) != "null" {
+			return s.saveWorkspaceOutput(ctx, c, j, dir)
+		}
+		return nil
+	})
 }
 
 func allocationPath(runtime, id string) string {
@@ -809,4 +817,32 @@ func (s *ColabService) refreshConsumption(ctx context.Context, id int64, c *cola
 	}
 	raw, _ := json.Marshal(v)
 	_, _ = s.store.db.ExecContext(ctx, `UPDATE colab_accounts SET consumption=$2,consumption_checked_at=now(),consumption_error='' WHERE id=$1`, id, string(raw))
+}
+
+// Write logs before artifacts: workspace setup can fail before an archive exists.
+func writeComputeOutput(result *colab.Execution, upload func(string, string, []byte) error, artifacts func() error) error {
+	var failures []error
+	if len(result.ExecutionError) > 0 && string(result.ExecutionError) != "null" {
+		failures = append(failures, errors.New("Python execution failed; see logs and execution.json"))
+	}
+	raw, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return err
+	}
+	for _, file := range []struct {
+		name, mime string
+		data       []byte
+	}{
+		{"execution.json", "application/json", raw},
+		{"stdout.txt", "text/plain", []byte(result.Stdout)},
+		{"stderr.txt", "text/plain", []byte(result.Stderr)},
+	} {
+		if err := upload(file.name, file.mime, file.data); err != nil {
+			failures = append(failures, fmt.Errorf("Drive %s writeback failed: %w", file.name, err))
+		}
+	}
+	if err := artifacts(); err != nil {
+		failures = append(failures, fmt.Errorf("Drive artifact writeback failed: %w", err))
+	}
+	return errors.Join(failures...)
 }

@@ -3,6 +3,8 @@ from pathlib import Path
 import tempfile
 import unittest
 import json
+import os
+import urllib.error
 import stat
 import zipfile
 from unittest.mock import patch
@@ -75,5 +77,39 @@ class WorkspaceTests(unittest.TestCase):
             cli.record_submission(root, 'https://example.com', 'job')
             self.assertEqual(json.loads((root/'.sub2api/jobs/job.json').read_text()), {'id':'job','base':'https://example.com'})
             self.assertEqual(cli.workspace_files(root, ['outputs']), [])
+
+class FailurePathTests(unittest.TestCase):
+    @unittest.skipUnless(hasattr(os, 'mkfifo'), 'FIFO requires POSIX')
+    def test_manifest_skips_fifo(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            os.mkfifo(root/'pipe')
+            self.assertEqual(cli.workspace_files(root, []), [])
+
+    def test_upload_cancels_invalid_ticket_without_masking_error(self):
+        client = cli.Client('https://example.com', 'key')
+        with tempfile.TemporaryDirectory() as d:
+            archive = Path(d)/'input.zip'
+            archive.write_bytes(b'test')
+            with patch.object(client, 'call', side_effect=[{'upload_id':'1','upload_url':'https://foreign.test/upload'}, OSError('cleanup unavailable')]) as call:
+                with self.assertRaisesRegex(ValueError, 'Unexpected Drive upload host'):
+                    client.upload(archive, 'input.zip')
+                self.assertEqual(call.call_args.kwargs, {'method':'DELETE'})
+
+    def test_failed_workspace_can_fetch_logs_without_archive(self):
+        client = cli.Client('https://example.com', 'key')
+        def download(remote, local, limit):
+            if remote.endswith('.zip'):
+                raise urllib.error.HTTPError(remote,404,'missing',{},None)
+            local.write_text('failure log')
+            return {'bytes':11}
+        with tempfile.TemporaryDirectory() as d, patch.object(client, 'download', side_effect=download):
+            job = {'id':'job','status':'failed','output_path':'/job','workspace':{'input_path':'/in.zip'}}
+            result = client.fetch(job, Path(d)/'result')
+            self.assertEqual(len(result['files']), 3)
+            self.assertEqual((Path(d)/'result/stdout.txt').read_text(), 'failure log')
+            job['status'] = 'succeeded'
+            with self.assertRaises(urllib.error.HTTPError):
+                client.fetch(job, Path(d)/'success')
 
 if __name__ == '__main__': unittest.main()

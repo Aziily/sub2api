@@ -1,54 +1,39 @@
 <template>
-  <section class="space-y-3" data-testid="resource-overview">
-    <header class="flex flex-wrap items-center justify-between gap-2">
+  <section class="space-y-4" data-testid="resource-overview">
+    <header class="flex flex-wrap items-center justify-between gap-3">
       <div>
-        <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('compute.dashboardTitle') }}</h2>
-        <p class="text-xs text-gray-500">{{ t(admin ? 'compute.dashboardAdminScope' : 'compute.dashboardUserScope') }}</p>
+        <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('compute.dashboardTitle') }}</h2>
+        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t(admin ? 'compute.dashboardAdminScope' : 'compute.dashboardUserScope') }}</p>
       </div>
-      <button class="btn btn-secondary btn-sm" :disabled="busy" @click="load">{{ t('common.refresh') }}</button>
+      <button class="btn btn-secondary btn-sm" :disabled="busy || apiLoading" @click="refreshAll">
+        <Icon name="refresh" size="sm" class="mr-1.5" />{{ t('common.refresh') }}
+      </button>
     </header>
-    <div class="grid gap-4 xl:grid-cols-2">
-      <article class="card p-5" data-testid="storage-summary" :aria-busy="busy">
-        <header class="mb-4 flex items-center justify-between">
-          <h3 class="flex items-center gap-2 font-semibold"><Icon name="database" size="md" class="text-blue-600" />{{ t('compute.navStorage') }}</h3>
-          <RouterLink class="text-sm text-primary-600 hover:underline" :to="admin ? '/admin/drive' : '/drive'">{{ t('compute.dashboardOpen') }}</RouterLink>
-        </header>
-        <p v-if="storageError" role="alert" class="text-sm text-red-600">{{ t('compute.dashboardStorageError') }}</p>
-        <p v-else-if="!storage" class="text-sm text-gray-500">{{ t('common.loading') }}</p>
-        <template v-else>
-          <dl class="grid grid-cols-2 gap-x-5 gap-y-4 sm:grid-cols-3">
-            <div v-for="item in storageStats" :key="item.label">
-              <dt class="text-xs text-gray-500">{{ item.label }}</dt>
-              <dd class="mt-1 text-lg font-semibold tabular-nums text-gray-900 dark:text-white">{{ item.value }}</dd>
-            </div>
-          </dl>
-          <p class="mt-4 border-t border-gray-100 pt-3 text-xs text-gray-500 dark:border-dark-700">
-            {{ t(storage.enabled ? 'compute.dashboardStorageReady' : 'compute.dashboardStorageDisabled') }}
-            <span v-if="admin"> · {{ t('compute.dashboardSnapshot') }} {{ stamp(storage.checkedAt) }}</span>
-          </p>
+    <div class="grid items-stretch gap-4 xl:grid-cols-3">
+      <ProductSummaryCard data-testid="api-summary" title="API" :scope="t('compute.dashboardAPIScope')" :to="admin ? '/admin/usage' : '/usage'"
+        :metrics="apiMetrics" :loading="apiLoading" :error="apiError ? t('compute.dashboardAPIError') : undefined">
+        <template #icon><Icon name="key" size="md" class="text-blue-600 dark:text-blue-400" /></template>
+        <template v-if="apiStats && !apiError">{{ t('dashboard.performance') }}: {{ number(apiStats.rpm) }} RPM / {{ number(apiStats.tpm) }} TPM</template>
+      </ProductSummaryCard>
+      <ProductSummaryCard data-testid="storage-summary" :title="t('compute.navStorage')" :scope="t('compute.dashboardStorageScope')" :to="admin ? '/admin/drive' : '/drive'"
+        :metrics="storageStats" :loading="busy" :error="storageError ? t('compute.dashboardStorageError') : undefined">
+        <template #icon><StorageIcon class="h-5 w-5 text-emerald-600 dark:text-emerald-400" /></template>
+        <template v-if="storage">
+          {{ t(storage.enabled ? 'compute.dashboardStorageReady' : 'compute.dashboardStorageDisabled') }}
+          <span v-if="admin"> · {{ t('compute.dashboardSnapshot') }} {{ stamp(storage.checkedAt) }}</span>
         </template>
-      </article>
-      <article class="card p-5" data-testid="compute-summary" :aria-busy="busy">
-        <header class="mb-4 flex items-center justify-between">
-          <h3 class="flex items-center gap-2 font-semibold"><ComputeIcon class="h-5 w-5 text-purple-600" />{{ t('compute.navCompute') }}</h3>
-          <RouterLink class="text-sm text-primary-600 hover:underline" :to="admin ? '/admin/compute' : '/compute'">{{ t('compute.dashboardOpen') }}</RouterLink>
-        </header>
-        <p v-if="computeError" role="alert" class="text-sm text-red-600">{{ t('compute.dashboardComputeError') }}</p>
-        <p v-else-if="!compute" class="text-sm text-gray-500">{{ t('common.loading') }}</p>
-        <template v-else>
-          <dl class="grid grid-cols-2 gap-x-5 gap-y-4 sm:grid-cols-3">
-            <div v-for="item in computeStats" :key="item.label">
-              <dt class="text-xs text-gray-500">{{ item.label }}</dt>
-              <dd class="mt-1 text-lg font-semibold tabular-nums text-gray-900 dark:text-white">{{ item.value }}</dd>
-            </div>
-          </dl>
-          <p v-if="admin" class="mt-4 border-t border-gray-100 pt-3 text-xs text-gray-500 dark:border-dark-700">
+      </ProductSummaryCard>
+      <ProductSummaryCard data-testid="compute-summary" :title="t('compute.navCompute')" :scope="t('compute.dashboardComputeScope')" :to="admin ? '/admin/compute' : '/compute'"
+        :metrics="computeStats" :loading="busy" :error="computeError ? t('compute.dashboardComputeError') : undefined">
+        <template #icon><ComputeIcon class="h-5 w-5 text-purple-600 dark:text-purple-400" /></template>
+        <template v-if="compute">
+          <p v-if="admin">
             {{ t('compute.dashboardCUCoverage', { known: compute.cu_accounts_known ?? 0, total: compute.accounts?.length ?? 0 }) }} · {{ t('compute.dashboardSnapshot') }} {{ stamp(cuCheckedAt) }}
             <span v-if="cuRefreshFailed" class="text-amber-600"> · {{ t('compute.cuStale') }}</span>
           </p>
-          <p class="mt-2 text-xs text-gray-500">{{ t(compute.compute_billing_enabled ? 'compute.billingEnabledHint' : 'compute.billingHint') }}</p>
+          <p>{{ t(compute.compute_billing_enabled ? 'compute.billingEnabledHint' : 'compute.billingHint') }}</p>
         </template>
-      </article>
+      </ProductSummaryCard>
     </div>
   </section>
 </template>
@@ -60,9 +45,18 @@ import { apiClient } from '@/api/client'
 import { status as adminDriveStatus } from '@/api/admin/drive'
 import { myDrive, formatBytes } from '@/api/drive'
 import Icon from '@/components/icons/Icon.vue'
+import ProductSummaryCard from './ProductSummaryCard.vue'
+import StorageIcon from '@/components/icons/StorageIcon.vue'
 import ComputeIcon from '@/components/icons/ComputeIcon.vue'
 
-const props = defineProps<{ admin?: boolean }>()
+interface APIOverview {
+  today_requests?: number; total_requests?: number; today_tokens?: number; total_tokens?: number
+  today_actual_cost?: number; today_account_cost?: number; total_actual_cost?: number
+  total_api_keys?: number; active_api_keys?: number; total_accounts?: number; normal_accounts?: number
+  rpm?: number; tpm?: number
+}
+const props = defineProps<{ admin?: boolean; apiStats?: APIOverview | null; apiLoading?: boolean; apiError?: boolean }>()
+const emit = defineEmits<{ refresh: [] }>()
 const { t } = useI18n()
 interface StorageSummary { enabled:boolean; used:number; reserved:number; files:number; capacity:number|null; free:number|null; usable?:number; total?:number; checkedAt?:string|null }
 interface ComputeSummary {
@@ -76,12 +70,26 @@ function oldest(values:(string|null|undefined)[]) { const valid = values.filter(
 function stamp(value?:string|null) { return value ? new Date(value).toLocaleString() : t('compute.dashboardUnknown') }
 function number(value:number|null|undefined, digits=0) { return value == null ? '—' : value.toLocaleString(undefined,{maximumFractionDigits:digits}) }
 function money(value:string|number|undefined) { return value == null ? '—' : Number(value).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:6}) }
+const apiMetrics = computed(() => {
+  const a = props.apiStats
+  if (!a || props.apiError) return []
+  const total = (value?: number) => `${t('common.total')}: ${number(value)}`
+  return [
+    { label: t('dashboard.todayRequests'), value: number(a.today_requests), detail: total(a.total_requests) },
+    { label: t('dashboard.todayTokens'), value: number(a.today_tokens), detail: total(a.total_tokens) },
+    { label: t('compute.dashboardAPICharged'), value: money(a.today_actual_cost), detail: total(a.total_actual_cost) },
+    ...(props.admin ? [{ label: t('compute.dashboardAPICost'), value: money(a.today_account_cost) }] : []),
+    { label: t('dashboard.apiKeys'), value: number(a.active_api_keys)+' / '+number(a.total_api_keys), detail: t('compute.dashboardActiveTotal') },
+    ...(props.admin ? [{ label: t('admin.dashboard.accounts'), value: number(a.normal_accounts)+' / '+number(a.total_accounts), detail: t('compute.dashboardActiveTotal') }] : [])
+  ]
+})
+function refreshAll() { emit('refresh'); void load() }
 const cuCheckedAt = computed(() => oldest((compute.value?.accounts ?? []).filter(x => x.consumption?.currentBalance != null).map(x => x.consumption_checked_at)))
 const cuRefreshFailed = computed(() => compute.value?.accounts?.some(x => !!x.consumption_error))
 const storageStats = computed(() => {
   const s=storage.value; if (!s) return []
   return [
-    {label:t('compute.dashboardStored'),value:formatBytes(s.used)},
+    {label:t(props.admin ? 'compute.dashboardStored' : 'compute.dashboardUsed'),value:formatBytes(s.used)},
     {label:t('compute.dashboardFiles'),value:number(s.files)},
     {label:t(props.admin ? 'compute.dashboardPoolFree' : 'compute.dashboardFree'),value:formatBytes(s.free)},
     {label:t(props.admin ? 'compute.dashboardCapacity' : 'compute.dashboardQuota'),value:s.capacity == null ? t('compute.dashboardUnknown') : formatBytes(s.capacity)},

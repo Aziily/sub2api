@@ -1,4 +1,5 @@
 <template>
+  <template v-if="showOverview !== false">
   <!-- Row 1: Core Stats -->
   <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
     <!-- Balance -->
@@ -132,6 +133,7 @@
     </div>
   </div>
 
+  </template>
   <!-- Row 3: Per-platform breakdown -->
   <div v-if="!isSimple && platformCards.length > 0" class="card p-4">
     <div class="mb-3 flex items-center justify-between">
@@ -242,6 +244,7 @@ interface FusedPlatformCard {
 }
 
 const props = defineProps<{
+  showOverview?: boolean
   stats: UserStatsType
   balance: number
   isSimple: boolean

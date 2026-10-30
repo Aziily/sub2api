@@ -107,7 +107,11 @@ func (c *Client) Execute(ctx context.Context, runtime, id, code string) (*Execut
 		if e != nil {
 			return nil, e
 		}
-		return parseExecution(raw)
+		out, err := parseExecution(raw)
+		if out == nil && err == nil {
+			err = errors.New("Colab response contained no terminal execution result")
+		}
+		return out, err
 	}
 	scan := bufio.NewScanner(io.LimitReader(r.Body, 8<<20))
 	scan.Buffer(make([]byte, 4096), 4<<20)
@@ -156,6 +160,9 @@ func parseExecution(raw []byte) (*Execution, error) {
 	if len(msg.ID) == 0 {
 		return nil, nil
 	}
+	if string(msg.ID) != "1" {
+		return nil, errors.New("Colab returned an unexpected execution response ID")
+	}
 	if len(msg.Error) > 0 && string(msg.Error) != "null" || msg.Result.IsError {
 		return nil, errors.New("Colab execution rejected by provider")
 	}
@@ -168,7 +175,7 @@ func parseExecution(raw []byte) (*Execution, error) {
 			}
 		}
 	}
-	if len(data) == 0 {
+	if len(data) == 0 || string(data) == "null" {
 		return nil, errors.New("Colab returned no structured execution result")
 	}
 	var out Execution
