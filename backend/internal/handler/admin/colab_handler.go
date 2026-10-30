@@ -197,6 +197,14 @@ func (h *ColabHandler) SetPricing(c *gin.Context) {
 		return
 	}
 	if e := h.svc.SetPricing(c.Request.Context(), p); e != nil {
+		if errors.Is(e, service.ErrComputeConflict) {
+			response.Error(c, 409, "Compute prices changed; reload before saving")
+			return
+		}
+		if errors.Is(e, os.ErrInvalid) {
+			response.BadRequest(c, "Use supported hardware IDs and nonnegative hourly prices with at most six decimal places")
+			return
+		}
 		h.fail(c, e)
 		return
 	}

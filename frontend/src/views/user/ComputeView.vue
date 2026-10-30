@@ -522,6 +522,7 @@ import { useRoute } from "vue-router";
 import { useI18n } from "vue-i18n";
 import AppLayout from "@/components/layout/AppLayout.vue";
 import api from "@/api/client";
+import { formatBytes as bytes } from "@/api/drive";
 import ComputeIcon from "@/components/icons/ComputeIcon.vue";
 interface HardwareOption {
   id: string;
@@ -624,7 +625,6 @@ python3 ~/compute.py logs JOB_ID
 python3 ~/compute.py fetch JOB_ID --directory ./results/JOB_ID`,
 );
 function formatNumber(n?: number|null) { return n == null || !Number.isFinite(n) ? '—' : n.toLocaleString(undefined,{maximumFractionDigits:4}); }
-function bytes(n:number) { if(n<1024)return `${n} B`;return `${(n/1024/1024).toFixed(2)} MiB`; }
 function editPrices(){ if(status.value?.pricing) pricingDraft.value=JSON.parse(JSON.stringify(status.value.pricing)); }
 async function savePrices(){
  const draft=pricingDraft.value;if(!draft)return;
