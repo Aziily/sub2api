@@ -40,6 +40,9 @@ func RegisterUserRoutes(
 			user.GET("/api-keys/:id/usage/daily", panelRateLimiter.Heavy(), h.Usage.GetMyAPIKeyDailyUsage)
 			user.GET("/platform-quotas", h.User.GetMyPlatformQuotas)
 
+			// 网盘：当前用户自己的虚拟目录树
+			registerUserDriveRoutes(user, h)
+
 			// 通知邮箱管理
 			notifyEmail := user.Group("/notify-email")
 			{

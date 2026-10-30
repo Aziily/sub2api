@@ -184,6 +184,8 @@ export default {
     accounts: 'Accounts',
     plugins: 'Plugins',
     proxies: 'Proxies',
+    drive: 'Cloud Drive',
+    driveStorage: 'Drive Storage',
     redeemCodes: 'Redeem Codes',
     ops: 'Ops',
     promoCodes: 'Promo Codes',

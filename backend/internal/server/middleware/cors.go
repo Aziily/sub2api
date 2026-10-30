@@ -86,8 +86,10 @@ func CORS(cfg config.CORSConfig) gin.HandlerFunc {
 			c.Writer.Header().Set("Access-Control-Expose-Headers", "ETag, Server-Timing")
 			c.Writer.Header().Set("Access-Control-Max-Age", "86400")
 		}
-		// 处理预检请求
-		if c.Request.Method == http.MethodOptions {
+		// 处理预检请求。只有带 Origin 的浏览器请求才是 CORS 预检；
+		// WebDAV 客户端（如 macOS Finder）会发送不带 Origin 的普通 OPTIONS，
+		// 需要继续交给路由处理。
+		if c.Request.Method == http.MethodOptions && origin != "" {
 			if originAllowed {
 				c.AbortWithStatus(http.StatusNoContent)
 			} else {

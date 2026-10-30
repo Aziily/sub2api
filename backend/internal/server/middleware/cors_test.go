@@ -152,6 +152,22 @@ func TestCORS_PreflightAllowedOrigin_ReturnsNoContent(t *testing.T) {
 		"允许的 origin 的 preflight 请求应返回 204")
 }
 
+func TestCORS_OptionsWithoutOrigin_PassesThrough(t *testing.T) {
+	cfg := config.CORSConfig{
+		AllowedOrigins:   []string{"https://allowed.example.com"},
+		AllowCredentials: false,
+	}
+	middleware := CORS(cfg)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodOptions, "/webdav/", nil)
+
+	middleware(c)
+
+	assert.False(t, c.IsAborted(), "WebDAV clients send OPTIONS without Origin; it must reach the route")
+}
+
 func TestCORS_WildcardOrigin_AllowsAny(t *testing.T) {
 	cfg := config.CORSConfig{
 		AllowedOrigins:   []string{"*"},
