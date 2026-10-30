@@ -481,6 +481,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/groups/storage',
+    name: 'AdminStorageGroups',
+    component: () => import('@/views/admin/ResourceGroupsView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, title: 'Storage Groups', titleKey: 'compute.storageGroups' }
+  },
+  {
+    path: '/admin/groups/compute',
+    name: 'AdminComputeGroups',
+    component: () => import('@/views/admin/ResourceGroupsView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, title: 'Compute Groups', titleKey: 'compute.computeGroups' }
+  },
+  {
     path: '/admin/channels',
     redirect: '/admin/channels/pricing'
   },

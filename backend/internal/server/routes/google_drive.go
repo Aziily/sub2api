@@ -30,6 +30,10 @@ func registerGoogleDriveRoutes(adminGroup *gin.RouterGroup, h *handler.Handlers)
 	if d == nil {
 		return
 	}
+	rg := adminGroup.Group("/resource-groups/:kind")
+	rg.GET("", d.ResourceGroups)
+	rg.POST("", d.SaveResourceGroup)
+	rg.PUT("/:group", d.SaveResourceGroup)
 	g := adminGroup.Group("/drive")
 	g.GET("", d.Status)
 	g.POST("/accounts/authorize", d.AuthorizeAccount)

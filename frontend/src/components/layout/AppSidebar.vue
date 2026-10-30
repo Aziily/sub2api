@@ -825,22 +825,19 @@ function finalizeNav(items: NavItem[]): NavItem[] {
   return visible.filter(item => !authStore.isSimpleMode || !item.hideInSimpleMode).map(item => ({ ...item, children: item.children ? finalizeNav(item.children) : undefined })).filter(item => !item.expandOnly || !item.children || item.children.length > 0)
 }
 
-// Product navigation contains usage only. All provider accounts, proxy settings,
-// scheduling and other administrator operations belong to one global section.
-const productPaths = new Set(['/keys', '/usage', '/available-channels', '/monitor', '/batch-image', '/drive', '/compute'])
+// Product sections contain their accounts and usage. General administration
+// remains at the top level; the unified groups page covers all three products.
+const productPaths = new Set(['/keys', '/available-channels', '/monitor', '/batch-image', '/drive', '/compute', '/admin/accounts', '/admin/drive', '/admin/compute'])
 function productNav(items: NavItem[]): NavItem[] {
-  const api = items.filter(item => productPaths.has(item.path) && item.path !== '/drive' && item.path !== '/compute')
+  const api = items.filter(item => productPaths.has(item.path) && !item.path.endsWith('/drive') && !item.path.endsWith('/compute'))
   const groups: NavItem[] = [
     {path: '/nav/api', label: 'API', icon: KeyIcon, expandOnly: true, children: api},
-    {path: '/nav/storage', label: t('compute.navStorage'), icon: CloudDriveIcon, expandOnly: true, children: items.filter(item => item.path === '/drive')},
-    {path: '/nav/compute', label: t('compute.navCompute'), icon: ComputeIcon, expandOnly: true, children: items.filter(item => item.path === '/compute')}
+    {path: '/nav/storage', label: t('compute.navStorage'), icon: CloudDriveIcon, expandOnly: true, children: items.filter(item => item.path.endsWith('/drive'))},
+    {path: '/nav/compute', label: t('compute.navCompute'), icon: ComputeIcon, expandOnly: true, children: items.filter(item => item.path.endsWith('/compute'))}
   ]
   const general = items.filter(item => !productPaths.has(item.path))
   const first = general[0]?.path.endsWith('/dashboard') ? general.splice(0, 1) : []
-  const management = general.filter(item => item.path.startsWith('/admin/')).flatMap(item => item.children || [item])
-  const rest = general.filter(item => !item.path.startsWith('/admin/'))
-  if (management.length) groups.push({path: '/nav/general', label: t('compute.navGeneral'), icon: CogIcon, expandOnly: true, children: management})
-  return [...first, ...groups.filter(g => g.children?.length), ...rest]
+  return [...first, ...groups.filter(g => g.children?.length), ...general]
 }
 
 // User navigation items (for regular users)
