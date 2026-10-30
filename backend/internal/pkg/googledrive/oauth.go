@@ -63,9 +63,11 @@ func randomString() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
-// Start binds the one-time state to the Sub2API user and expires it after ten minutes.
+// Start binds the one-time state to the administrator and a target (for the
+// storage pool: an existing storage account ID, or 0 for a new account) and
+// expires it after ten minutes.
 func (o *OAuthFlow) Start(actorID, userID int64) (string, error) {
-	if actorID <= 0 || userID <= 0 {
+	if actorID <= 0 || userID < 0 {
 		return "", errors.New("invalid user")
 	}
 	state, err := randomString()

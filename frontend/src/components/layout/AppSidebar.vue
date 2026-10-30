@@ -477,6 +477,24 @@ const ServerIcon = {
     )
 }
 
+// CloudDriveIcon: a cloud with a drive slot, shared by 网盘 and 网盘存储.
+const CloudDriveIcon = {
+  render: () =>
+    h(
+      'svg',
+      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
+      [
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M2.25 14.25a4.5 4.5 0 004.5 4.5H18a3.75 3.75 0 001.332-7.257 3 3 0 00-3.758-3.848 5.25 5.25 0 00-10.233 2.33A4.502 4.502 0 002.25 14.25z'
+        }),
+        h('path', { 'stroke-linecap': 'round', d: 'M8.25 15h5.25' }),
+        h('path', { 'stroke-linecap': 'round', d: 'M15.75 15h.01' })
+      ]
+    )
+}
+
 const PluginIcon = {
   render: () => h(Icon, { name: 'cube' })
 }
@@ -724,6 +742,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
   }
   items.push(
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
+    { path: '/drive', label: t('nav.drive'), icon: CloudDriveIcon },
     { path: '/batch-image', label: t('nav.batchImage'), icon: BatchImageIcon, hideInSimpleMode: true, featureFlag: flagBatchImageAccess },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
     { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
@@ -796,7 +815,7 @@ const adminNavItems = computed((): NavItem[] => {
     { path: '/admin/plugins', label: t('nav.plugins'), icon: PluginIcon, featureFlag: flagPluginManagement },
     { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon },
     { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon },
-    { path: '/admin/google-drive', label: t('nav.googleDrive'), icon: ServerIcon },
+    { path: '/admin/drive', label: t('nav.driveStorage'), icon: CloudDriveIcon },
     {
       path: '/admin/security-audit',
       label: t('nav.securityAudit'),
@@ -846,6 +865,7 @@ const adminNavItems = computed((): NavItem[] => {
   if (authStore.isSimpleMode) {
     const filtered = visible.filter(item => !item.hideInSimpleMode)
     filtered.push({ path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon })
+    filtered.push({ path: '/drive', label: t('nav.drive'), icon: CloudDriveIcon })
     filtered.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon })
     for (const cm of customMenuItemsForAdmin.value) {
       filtered.push({ path: `/custom/${cm.id}`, label: cm.label, icon: null, iconSvg: cm.icon_svg })

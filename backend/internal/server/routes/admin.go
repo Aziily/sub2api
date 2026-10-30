@@ -69,7 +69,7 @@ func RegisterAdminRoutes(
 		// 代理管理
 		registerProxyRoutes(admin, h, stepUpAuth)
 
-		// Google Drive
+		// 网盘存储池（Google 账号）与用户网盘运维
 		registerGoogleDriveRoutes(admin, h)
 
 		// 卡密管理

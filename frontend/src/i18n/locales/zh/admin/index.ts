@@ -7,7 +7,7 @@ import settings from './settings'
 import audit from './audit'
 import promptAudit from './promptAudit'
 import plugins from './plugins'
-import googleDrive from './googleDrive'
+import driveStorage from './driveStorage'
 
 export default {
   ...overview,
@@ -19,5 +19,5 @@ export default {
   ...audit,
   ...promptAudit,
   ...plugins,
-  ...googleDrive,
+  ...driveStorage,
 }

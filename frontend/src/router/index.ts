@@ -216,6 +216,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/drive',
+    name: 'Drive',
+    component: () => import('@/views/user/DriveView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Cloud Drive',
+      titleKey: 'drive.title',
+      descriptionKey: 'drive.description'
+    }
+  },
+  {
     path: '/batch-image',
     name: 'BatchImageGuide',
     alias: '/docs/batch-image',
@@ -562,16 +574,20 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
-    path: '/admin/google-drive',
-    name: 'AdminGoogleDrive',
+    path: '/admin/drive',
+    name: 'AdminDrive',
     component: () => import('@/views/admin/GoogleDriveView.vue'),
     meta: {
       requiresAuth: true,
       requiresAdmin: true,
-      title: 'Google Drive',
-      titleKey: 'admin.googleDrive.title',
-      descriptionKey: 'admin.googleDrive.description'
+      title: 'Drive Storage',
+      titleKey: 'admin.driveStorage.title',
+      descriptionKey: 'admin.driveStorage.description'
     }
+  },
+  {
+    path: '/admin/google-drive',
+    redirect: '/admin/drive'
   },
   {
     path: '/admin/redeem',

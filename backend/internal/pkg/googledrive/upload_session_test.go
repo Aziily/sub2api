@@ -18,9 +18,8 @@ func TestCreateUploadSession(t *testing.T) {
 			if parents, _ := meta["parents"].([]any); len(parents) != 1 || parents[0] != "folder1" {
 				t.Errorf("new file not placed in parent: %v", meta)
 			}
-		case r.Method == http.MethodPatch && r.URL.Path == "/upload/drive/v3/files/file1":
-			if _, ok := meta["parents"]; ok {
-				t.Error("replacement must not change parents")
+			if props, _ := meta["appProperties"].(map[string]any); props["node"] != "n42" {
+				t.Errorf("application tag missing: %v", meta)
 			}
 		default:
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
@@ -33,15 +32,11 @@ func TestCreateUploadSession(t *testing.T) {
 	defer server.Close()
 	c := NewClient(server.Client())
 	c.base = server.URL + "/drive/v3/"
-	req := UploadSessionRequest{Name: "a.txt", ParentID: "folder1", Size: 5, Origin: "https://drive.example"}
+	req := UploadSessionRequest{Name: "a.txt", ParentID: "folder1", Size: 5, Origin: "https://drive.example", AppProperties: map[string]string{"node": "n42"}}
 
 	location = server.URL + "/upload/drive/v3/files?upload_id=abc"
 	if got, err := c.CreateUploadSession(context.Background(), req); err != nil || got != location {
 		t.Fatalf("create: %q %v", got, err)
-	}
-	req.ReplaceID = "file1"
-	if _, err := c.CreateUploadSession(context.Background(), req); err != nil {
-		t.Fatalf("replace: %v", err)
 	}
 	// A session URI is a bearer capability; never relay one for another host.
 	location = "https://attacker.example/upload/drive/v3/files?upload_id=abc"

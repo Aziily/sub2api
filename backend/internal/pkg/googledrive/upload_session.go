@@ -15,10 +15,12 @@ import (
 // UploadSessionRequest describes one file to send directly to Drive.
 type UploadSessionRequest struct {
 	Name        string
-	ParentID    string // folder for a new file
-	ReplaceID   string // existing file whose contents are replaced; overrides ParentID
+	ParentID    string // folder that receives the new file
 	ContentType string
 	Size        int64
+	// AppProperties are private to this OAuth client; the pool uses them to
+	// find the object a client uploaded without trusting the client's word.
+	AppProperties map[string]string
 	// Origin is the browser origin that will PUT the bytes. Google allows
 	// cross-origin requests to the session URI only from this origin.
 	Origin string
@@ -36,18 +38,13 @@ func (c *Client) CreateUploadSession(ctx context.Context, r UploadSessionRequest
 		r.ContentType = "application/octet-stream"
 	}
 	uploadBase := strings.TrimSuffix(c.base, "/drive/v3/") + "/upload/drive/v3/files"
-	q := "?uploadType=resumable&fields=id,name,mimeType,size,modifiedTime,parents"
-	method, endpoint, metadata := http.MethodPost, uploadBase+q, map[string]any{"name": r.Name}
-	switch {
-	case r.ReplaceID != "":
-		if !validID(r.ReplaceID) {
-			return "", errors.New("invalid file ID")
-		}
-		method, endpoint = http.MethodPatch, uploadBase+"/"+url.PathEscape(r.ReplaceID)+q
-	case validID(r.ParentID):
-		metadata["parents"] = []string{r.ParentID}
-	default:
+	if !validID(r.ParentID) {
 		return "", errors.New("invalid parent folder")
+	}
+	method, endpoint := http.MethodPost, uploadBase+"?uploadType=resumable&fields="+fileFields
+	metadata := map[string]any{"name": r.Name, "parents": []string{r.ParentID}}
+	if len(r.AppProperties) > 0 {
+		metadata["appProperties"] = r.AppProperties
 	}
 	data, err := json.Marshal(metadata)
 	if err != nil {
@@ -79,4 +76,40 @@ func (c *Client) CreateUploadSession(ctx context.Context, r UploadSessionRequest
 		return "", errors.New("Google Drive returned an unexpected upload location")
 	}
 	return loc.String(), nil
+}
+
+// UploadToSession sends size bytes from content to a session created by
+// CreateUploadSession and returns the stored file. Content is streamed in a
+// single request; the caller enforces its own limits.
+func (c *Client) UploadToSession(ctx context.Context, sessionURI string, size int64, content io.Reader) (*File, error) {
+	if size < 0 || content == nil {
+		return nil, errors.New("invalid upload")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, sessionURI, io.LimitReader(content, size))
+	if err != nil {
+		return nil, err
+	}
+	req.ContentLength = size
+	if size == 0 {
+		req.Body = http.NoBody
+	}
+	// The session URI already authorizes the upload; the OAuth transport adds
+	// a bearer token as well, which Drive accepts.
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("Google Drive upload failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		return nil, &APIError{StatusCode: resp.StatusCode}
+	}
+	var file File
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&file); err != nil {
+		return nil, errors.New("invalid Google Drive response")
+	}
+	if file.ID == "" {
+		return nil, errors.New("Google Drive returned no file")
+	}
+	return &file, nil
 }

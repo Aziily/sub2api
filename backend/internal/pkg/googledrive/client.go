@@ -19,6 +19,18 @@ import (
 
 const apiBase = "https://www.googleapis.com/drive/v3/"
 
+// FolderMimeType marks Drive folders; NativeDocPrefix marks Docs, Sheets and
+// other Google-native files, which have no raw content to download.
+const (
+	FolderMimeType  = "application/vnd.google-apps.folder"
+	NativeDocPrefix = "application/vnd.google-apps."
+)
+
+// ErrTooLarge is returned when content exceeds a configured size limit.
+var ErrTooLarge = errors.New("file exceeds the configured size limit")
+
+const fileFields = "id,name,mimeType,size,modifiedTime,parents,appProperties"
+
 type Client struct {
 	httpClient *http.Client
 	base       string
@@ -46,12 +58,13 @@ type About struct {
 	} `json:"user"`
 }
 type File struct {
-	ID           string   `json:"id"`
-	Name         string   `json:"name"`
-	MimeType     string   `json:"mimeType"`
-	Size         *int64   `json:"size,string"`
-	ModifiedTime string   `json:"modifiedTime"`
-	Parents      []string `json:"parents,omitempty"`
+	ID            string            `json:"id"`
+	Name          string            `json:"name"`
+	MimeType      string            `json:"mimeType"`
+	Size          *int64            `json:"size,string"`
+	ModifiedTime  string            `json:"modifiedTime"`
+	Parents       []string          `json:"parents,omitempty"`
+	AppProperties map[string]string `json:"appProperties,omitempty"`
 }
 type FilePage struct {
 	Files         []File `json:"files"`
@@ -125,8 +138,78 @@ func (c *Client) GetFile(ctx context.Context, fileID string) (*File, error) {
 		return nil, fmt.Errorf("invalid file ID")
 	}
 	var file File
-	err := c.get(ctx, "files/"+url.PathEscape(fileID), url.Values{"fields": {"id,name,mimeType,size,modifiedTime,parents"}}, &file)
+	err := c.get(ctx, "files/"+url.PathEscape(fileID), url.Values{"fields": {fileFields}}, &file)
 	return &file, err
+}
+
+// FindByAppProperty returns the non-trashed files inside parentID whose
+// private application property key equals value. Values are restricted to
+// the ID alphabet so they can be embedded in the query safely.
+func (c *Client) FindByAppProperty(ctx context.Context, parentID, key, value string) ([]File, error) {
+	if !validID(parentID) || !validID(key) || !validID(value) {
+		return nil, fmt.Errorf("invalid search")
+	}
+	q := url.Values{
+		"fields":   {"files(" + fileFields + ")"},
+		"pageSize": {"10"},
+		"q":        {"trashed = false and '" + parentID + "' in parents and appProperties has { key='" + key + "' and value='" + value + "' }"},
+	}
+	var result FilePage
+	if err := c.get(ctx, "files", q, &result); err != nil {
+		return nil, err
+	}
+	return result.Files, nil
+}
+
+// DeleteFile permanently deletes a file so its space is released at once.
+// The pool's database is the source of truth, so Drive's trash is skipped.
+// A file that is already gone counts as deleted.
+func (c *Client) DeleteFile(ctx context.Context, fileID string) error {
+	if !validID(fileID) {
+		return fmt.Errorf("invalid file ID")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.base+"files/"+url.PathEscape(fileID), nil)
+	if err != nil {
+		return err
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("Google Drive request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNotFound {
+		return &APIError{StatusCode: resp.StatusCode}
+	}
+	return nil
+}
+
+// DownloadRange streams the file's raw contents starting at offset. The
+// caller must close the body.
+func (c *Client) DownloadRange(ctx context.Context, fileID string, offset int64) (io.ReadCloser, error) {
+	if !validID(fileID) || offset < 0 {
+		return nil, fmt.Errorf("invalid download request")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"files/"+url.PathEscape(fileID)+"?alt=media", nil)
+	if err != nil {
+		return nil, err
+	}
+	if offset > 0 {
+		req.Header.Set("Range", "bytes="+strconv.FormatInt(offset, 10)+"-")
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("Google Drive download failed: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
+		resp.Body.Close()
+		return nil, &APIError{StatusCode: resp.StatusCode}
+	}
+	if offset > 0 && resp.StatusCode != http.StatusPartialContent {
+		resp.Body.Close()
+		return nil, errors.New("Google Drive ignored the range request")
+	}
+	return resp.Body, nil
 }
 
 // ReplaceContent updates the contents of an existing non-native Drive file.

@@ -711,6 +711,8 @@ func TestEmbeddedFrontendBypassesBareAPIAliases(t *testing.T) {
 		"/contents/generations/tasks/task-123",
 		"/v3/contents/generations/tasks",
 		"/v3/contents/generations/tasks/task-123",
+		"/drive/v1",
+		"/drive/v1/files",
 		"/drive/v1/upload-sessions",
 	} {
 		require.True(t, shouldBypassEmbeddedFrontend(path), "path=%s", path)
@@ -718,6 +720,7 @@ func TestEmbeddedFrontendBypassesBareAPIAliases(t *testing.T) {
 
 	for _, path := range []string{
 		"/model-plaza",
+		"/drive",
 		"/custom/page-1",
 		"/monitor",
 		"/setup",

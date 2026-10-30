@@ -1,24 +1,27 @@
-# Google Drive integration development status
+# Google Drive storage client
 
-This branch is a work in progress. It does not yet expose a Drive management
-page or a WebDAV endpoint and must not be deployed as a finished integration.
+This package contains the low-level Google pieces behind the cloud drive
+(网盘): the PKCE authorization flow with the `drive.file` scope, token refresh,
+file operations (create, download, delete, quota) and resumable upload
+sessions that a browser can complete directly against Google.
 
-The current primitives include a PKCE authorization flow, encrypted
-per-user refresh-token storage, a separate root-folder identifier for each
-user, Drive file operations and a Basic-auth adapter for the existing API-key
-checks. A namespace resolver walks from the configured root and rejects
-ambiguous names and traversal segments. These components are not yet wired
-into routes or the application lifecycle.
+The pooled drive itself lives in `internal/service`:
 
-The integration uses the `drive.file` scope. It can access files created by
-the application or explicitly opened with it; this is not access to every
-existing file in the account. Google OAuth applications in Testing mode may
-issue refresh tokens that expire after seven days. Production use also needs
-a stable, explicitly configured encryption key and a registered callback URI.
+- `drive_storage_accounts` holds the Google accounts that administrators
+  connect as shared storage. Only encrypted refresh tokens are stored.
+- `drive_nodes` is each user's virtual tree. Folders exist only in the
+  database; every file points at one object in one pool account. Users never
+  see Google accounts or Drive IDs.
+- `drive_user_quotas` holds optional per-user limits.
 
-Before deployment, complete the authenticated admin authorization and file
-management flow, enforce per-user root traversal for every file operation,
-implement and test WebDAV methods and limits, and verify cross-user isolation
-and key revocation against the real application. Test both file integrity and
-error handling with the target Drive account. Do not log OAuth credentials,
-API keys or request bodies.
+`GoogleDriveService` picks the account with the most free space for each new
+file, reserves space for direct uploads, expires abandoned reservations and
+refreshes account quotas in a background loop. The same tree is exposed to
+the web UI (`/api/v1/user/drive`), to API-key clients (`/drive/v1`) and to
+WebDAV (`/webdav`, Basic auth with the user's email and one of their API
+keys).
+
+With `drive.file`, the application can only see files it created. OAuth
+clients in Google's Testing mode may issue refresh tokens that expire after
+seven days; administrators then reauthorize the account from the admin page.
+Do not log OAuth credentials, API keys or request bodies.
