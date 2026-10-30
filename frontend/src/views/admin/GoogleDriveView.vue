@@ -4,7 +4,7 @@
       <header class="flex flex-col gap-3">
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 class="text-xl font-bold text-gray-900 dark:text-white">{{ t('admin.driveStorage.title') }}</h1>
+            <h1 class="flex items-center gap-2 text-xl font-bold text-gray-900 dark:text-white"><StorageIcon class="h-6 w-6 text-primary-600" />{{ t('admin.driveStorage.title') }}</h1>
             <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.driveStorage.description') }}</p>
           </div>
           <div class="flex gap-2">
@@ -181,6 +181,7 @@ import { formatBytes, type DriveClient } from '@/api/drive'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import DriveFileDrawer from '@/components/drive/DriveFileDrawer.vue'
+import StorageIcon from '@/components/icons/StorageIcon.vue'
 import Icon from '@/components/icons/Icon.vue'
 
 const { t } = useI18n()
