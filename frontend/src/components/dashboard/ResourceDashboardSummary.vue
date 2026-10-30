@@ -77,7 +77,7 @@ const apiMetrics = computed(() => {
   return [
     { label: t('dashboard.todayRequests'), value: number(a.today_requests), detail: total(a.total_requests) },
     { label: t('dashboard.todayTokens'), value: number(a.today_tokens), detail: total(a.total_tokens) },
-    { label: t('compute.dashboardAPICharged'), value: money(a.today_actual_cost), detail: total(a.total_actual_cost) },
+    { label: t('compute.dashboardAPICharged'), value: money(a.today_actual_cost), detail: `${t('common.total')}: ${money(a.total_actual_cost)}` },
     ...(props.admin ? [{ label: t('compute.dashboardAPICost'), value: money(a.today_account_cost) }] : []),
     { label: t('dashboard.apiKeys'), value: number(a.active_api_keys)+' / '+number(a.total_api_keys), detail: t('compute.dashboardActiveTotal') },
     ...(props.admin ? [{ label: t('admin.dashboard.accounts'), value: number(a.normal_accounts)+' / '+number(a.total_accounts), detail: t('compute.dashboardActiveTotal') }] : [])
