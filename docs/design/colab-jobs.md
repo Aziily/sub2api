@@ -1,8 +1,10 @@
 # Workspace compute on feat/codelab
 
-The platform separates API, storage and compute navigation. Each product has
-user screens and administrator screens. General profile, billing and settings
-remain outside those groups. Compute uses a chip icon distinct from proxies.
+The platform separates API, storage and compute usage from global management.
+All provider accounts, grants, proxies, quotas, scheduling and administrator
+settings live under General. The account pages share a resource configuration
+tab bar; Google grants remain independently scoped rather than being merged.
+Ordinary users see usage links and their own profile/billing only. Compute uses a chip icon distinct from proxies.
 
 ## User contract
 
@@ -26,10 +28,32 @@ export SUB2API_BASE_URL=https://YOUR-HOST
 # Set SUB2API_API_KEY securely, or let the CLI prompt without echo.
 cd my-project
 python3 "$HOME/compute.py" run --dry-run -- python main.py
-python3 "$HOME/compute.py" run --hardware A100 --output outputs --wait -- python main.py
+python3 "$HOME/compute.py" run --hardware A100 --output outputs -- python main.py
+python3 "$HOME/compute.py" queue
+python3 "$HOME/compute.py" wait JOB_UUID
+python3 "$HOME/compute.py" logs JOB_UUID
+python3 "$HOME/compute.py" fetch JOB_UUID --directory ./results/JOB_UUID
 python3 "$HOME/compute.py" resources
 python3 "$HOME/compute.py" status JOB_UUID
 ```
+
+The CLI follows an asynchronous batch workflow: submit, retain the job ID,
+inspect the queue/status, wait or cancel, then fetch results. It resembles the
+Slurm workflow but is not an sbatch-compatible scheduler: there are no job
+arrays, multi-node/MPI allocations, reservations or fair-share scheduling.
+Commands are argv, so use `-- bash train.sh` for a project entry script.
+Receipts in `.sub2api/jobs/JOB_UUID.json` contain only the ID and origin, never
+API keys. Hidden receipts are excluded from future workspace uploads. The
+`queue` command lists the most recent 100 jobs, including completed ones; full
+logs become available after execution rather than streamed in real time.
+
+`fetch` downloads `artifacts.zip`, stdout, stderr and execution metadata into a
+new local directory. It validates archive sizes, paths, duplicate names and
+file types before unpacking under `files/`. Existing destination directories
+are never overwritten. Downloads include local SHA-256 manifests (transfer
+integrity evidence, not a provider signature). `run --fetch ./results/new-job`
+combines submission, waiting and retrieval; default `run` returns immediately.
+Download failures can be retried with `fetch` without rerunning the task.
 
 The argv runs in a fresh provider runtime with the project as cwd. Dependencies
 can be installed by the submitted entry script (for example a setup-and-run

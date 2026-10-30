@@ -79,7 +79,7 @@ export default {
   "jobsTotal": "Jobs",
   "jobsSucceeded": "Completed",
   "cliTitle": "Submit from your workspace",
-  "cliDescription": "Use your API key. Submit code, data and dependency scripts together; selected output folders are saved to your drive.",
+  "cliDescription": "Keep your code and data locally. Submit a working directory and command using your API key. Jobs run from the queue; results are saved to Drive and can be fetched locally.",
   "cliDownload": "Download CLI",
   "cliKey": "Manage API keys",
   "cliTransfer": "Input uploads and artifact writeback connect directly to Google Drive; runtime input reads and file downloads use the gateway.",
@@ -87,5 +87,13 @@ export default {
   "webSubmit": "Or submit a Python script",
   "runtimeHint": "Measured from allocation to release, including output writeback; not provider-billed time. Older jobs have no measurement.",
   "workspace": "Workspace job",
-  "transferTitle": "File transfers"
+  "transferTitle": "File transfers",
+  "navGeneral": "General",
+  "apiAccounts": "API accounts",
+  "storageAccounts": "Storage accounts & quotas",
+  "computeAccounts": "Compute accounts & scheduling",
+  "cliLifecycle": "Submission returns a job ID; you can close the terminal. Use queue, logs, fetch and cancel to manage the job.",
+  "resourceSettings": "Account & resource settings",
+  "resourceHint": "Manage upstream accounts and proxies centrally. API, storage and compute use separate grants and may connect the same Google account.",
+  "proxySettings": "Proxy connections"
 }

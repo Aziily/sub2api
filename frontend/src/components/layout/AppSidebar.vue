@@ -825,20 +825,22 @@ function finalizeNav(items: NavItem[]): NavItem[] {
   return visible.filter(item => !authStore.isSimpleMode || !item.hideInSimpleMode).map(item => ({ ...item, children: item.children ? finalizeNav(item.children) : undefined })).filter(item => !item.expandOnly || !item.children || item.children.length > 0)
 }
 
-const productPaths = new Set(['/keys', '/usage', '/available-channels', '/monitor', '/batch-image', '/drive', '/compute', '/admin/accounts', '/admin/groups', '/admin/proxies', '/admin/channels', '/admin/usage', '/admin/drive', '/admin/compute'])
+// Product navigation contains usage only. All provider accounts, proxy settings,
+// scheduling and other administrator operations belong to one global section.
+const productPaths = new Set(['/keys', '/usage', '/available-channels', '/monitor', '/batch-image', '/drive', '/compute'])
 function productNav(items: NavItem[]): NavItem[] {
-  const flat = items.flatMap(item => item.path === '/admin/channels' ? item.children || [] : [item])
-  const api = flat.filter(item => productPaths.has(item.path) && !item.path.endsWith('/drive') && !item.path.endsWith('/compute') || item.path.startsWith('/admin/channels/'))
-  const storage = flat.filter(item => item.path.endsWith('/drive'))
-  const compute = flat.filter(item => item.path.endsWith('/compute'))
+  const api = items.filter(item => productPaths.has(item.path) && item.path !== '/drive' && item.path !== '/compute')
   const groups: NavItem[] = [
     {path: '/nav/api', label: 'API', icon: KeyIcon, expandOnly: true, children: api},
-    {path: '/nav/storage', label: t('compute.navStorage'), icon: CloudDriveIcon, expandOnly: true, children: storage},
-    {path: '/nav/compute', label: t('compute.navCompute'), icon: ComputeIcon, expandOnly: true, children: compute}
+    {path: '/nav/storage', label: t('compute.navStorage'), icon: CloudDriveIcon, expandOnly: true, children: items.filter(item => item.path === '/drive')},
+    {path: '/nav/compute', label: t('compute.navCompute'), icon: ComputeIcon, expandOnly: true, children: items.filter(item => item.path === '/compute')}
   ]
   const general = items.filter(item => !productPaths.has(item.path))
   const first = general[0]?.path.endsWith('/dashboard') ? general.splice(0, 1) : []
-  return [...first, ...groups.filter(g => g.children?.length), ...general]
+  const management = general.filter(item => item.path.startsWith('/admin/')).flatMap(item => item.children || [item])
+  const rest = general.filter(item => !item.path.startsWith('/admin/'))
+  if (management.length) groups.push({path: '/nav/general', label: t('compute.navGeneral'), icon: CogIcon, expandOnly: true, children: management})
+  return [...first, ...groups.filter(g => g.children?.length), ...rest]
 }
 
 // User navigation items (for regular users)
@@ -883,12 +885,12 @@ const adminNavItems = computed((): NavItem[] => {
     },
     // 「仅充值」站点连管理端的「订阅管理」入口也一并收起（路由本身不拦截）。
     { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, featureFlag: flagSubscription },
-    { path: '/admin/accounts', label: t('nav.accounts'), icon: GlobeIcon },
+    { path: '/admin/accounts', label: t('compute.apiAccounts'), icon: GlobeIcon },
     { path: '/admin/plugins', label: t('nav.plugins'), icon: PluginIcon, featureFlag: flagPluginManagement },
     { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon },
     { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon },
-    { path: '/admin/drive', label: t('nav.driveStorage'), icon: CloudDriveIcon },
-    { path: '/admin/compute', label: t('compute.adminTitle'), icon: ComputeIcon },
+    { path: '/admin/drive', label: t('compute.storageAccounts'), icon: CloudDriveIcon },
+    { path: '/admin/compute', label: t('compute.computeAccounts'), icon: ComputeIcon },
     {
       path: '/admin/security-audit',
       label: t('nav.securityAudit'),

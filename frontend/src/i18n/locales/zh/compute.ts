@@ -79,7 +79,7 @@ export default {
   "jobsTotal": "任务数",
   "jobsSucceeded": "已完成",
   "cliTitle": "在工作目录中提交",
-  "cliDescription": "用 API 密钥连接平台。代码、数据和依赖安装脚本随目录提交，指定输出目录后自动回写网盘。",
+  "cliDescription": "在本地保留代码和数据，用 API 密钥提交工作目录与执行命令。平台排队执行，结果保存在网盘，也可以取回本地。",
   "cliDownload": "下载 CLI",
   "cliKey": "管理 API 密钥",
   "cliTransfer": "输入上传与结果回写直连 Google Drive；运行时读取输入和下载文件仍经过平台。",
@@ -87,5 +87,13 @@ export default {
   "webSubmit": "或提交一个 Python 脚本",
   "runtimeHint": "按分配完成至释放记录，包含输出回写；不是上游计费时长。旧任务未记录此时间。",
   "workspace": "工作目录任务",
-  "transferTitle": "文件传输"
+  "transferTitle": "文件传输",
+  "navGeneral": "全局管理",
+  "apiAccounts": "API 账号",
+  "storageAccounts": "存储账号与配额",
+  "computeAccounts": "计算账号与调度",
+  "cliLifecycle": "提交后获得任务 ID，可退出终端。用 queue 查看任务、logs 查看日志、fetch 下载结果，cancel 取消任务。",
+  "resourceSettings": "账号与资源配置",
+  "resourceHint": "统一管理平台使用的上游账号和代理。API、存储和计算分别授权，可连接同一个 Google 账号。",
+  "proxySettings": "代理连接"
 }

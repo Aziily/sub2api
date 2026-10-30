@@ -176,6 +176,7 @@
           >{{ cliExample }}</pre
         >
         <div class="mt-3 space-y-2 text-xs text-gray-500">
+          <p>{{ t("compute.cliLifecycle") }}</p>
           <p>{{ t("compute.cliIgnore") }}</p>
           <p>{{ t("compute.cliTransfer") }}</p>
           <RouterLink
@@ -565,7 +566,11 @@ const resourceChoices = computed(() => hardwareChoices.value.filter(hw => !hw.hi
 const cliExample = computed(
   () => `export SUB2API_BASE_URL="${window.location.origin}"
 # SUB2API_API_KEY: ${t("compute.cliKey")}
-python3 compute.py run --hardware ${hardware.value} --output outputs --wait -- python main.py`,
+python3 ~/compute.py run --hardware ${hardware.value} --output outputs -- python main.py
+python3 ~/compute.py queue
+python3 ~/compute.py wait JOB_ID
+python3 ~/compute.py logs JOB_ID
+python3 ~/compute.py fetch JOB_ID --directory ./results/JOB_ID`,
 );
 function fmtDur(sec: number) {
   if (!sec || sec <= 0) return "0s";
