@@ -108,7 +108,7 @@
           class="grid divide-y divide-gray-100 sm:grid-cols-2 xl:grid-cols-3 dark:divide-dark-700"
         >
           <button
-            v-for="hw in hardwareChoices"
+            v-for="hw in resourceChoices"
             :key="hw.id"
             type="button"
             class="flex items-center gap-4 p-5 text-left transition-colors hover:bg-gray-50 dark:hover:bg-dark-700/50"
@@ -156,7 +156,7 @@
           {{ status.disabled_reason }}
         </p>
       </section>
-      <section class="card p-5">
+      <section v-if="!admin" class="card p-5">
         <div class="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h2 class="font-semibold">{{ t("compute.cliTitle") }}</h2>
@@ -274,7 +274,7 @@
           {{ t("compute.callback") }}: {{ status?.redirect_uri }}
         </p>
       </section>
-      <details class="card p-5">
+      <details v-if="!admin" class="card p-5">
         <summary class="cursor-pointer text-sm font-semibold">
           {{ t("compute.webSubmit") }}
         </summary>
@@ -438,7 +438,7 @@
             {{
               selected.runtime_released
                 ? t("compute.released")
-                : selected.runtime_name
+                : selected.allocated_at
                   ? t("compute.pendingRelease")
                   : "—"
             }}
@@ -561,6 +561,7 @@ const title = ref("CPU smoke test"),
 const hardwareChoices = computed<HardwareOption[]>(
   () => status.value?.hardware_options?.filter((hw) => hw.eligible) || [],
 );
+const resourceChoices = computed(() => hardwareChoices.value.filter(hw => !hw.high_mem));
 const cliExample = computed(
   () => `export SUB2API_BASE_URL="${window.location.origin}"
 # SUB2API_API_KEY: ${t("compute.cliKey")}
@@ -600,13 +601,15 @@ async function load() {
   if (loading) return;
   loading = true;
   try {
-    const [s, j] = await Promise.all([
+    const [s, j] = await Promise.allSettled([
       api.get<Status>(base.value),
       api.get<Job[]>(base.value + "/jobs"),
     ]);
-    status.value = s.data;
-    jobs.value = j.data;
     error.value = "";
+    if (s.status === 'fulfilled') status.value = s.value.data;
+    else error.value = errorText(s.reason);
+    if (j.status === 'fulfilled') jobs.value = j.value.data;
+    else error.value = errorText(j.reason);
     if (!hardwareChoices.value.some((hw) => hw.id === hardware.value))
       hardware.value = hardwareChoices.value[0]?.id || "";
     if (selected.value) await show(selected.value.id);

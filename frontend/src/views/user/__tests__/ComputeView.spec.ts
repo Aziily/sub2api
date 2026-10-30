@@ -1,8 +1,7 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { mount, flushPromises } from "@vue/test-utils";
-import { createI18n } from "vue-i18n";
-import compute from "@/i18n/locales/en/compute";
 import ComputeView from "../ComputeView.vue";
+vi.mock("vue-i18n", () => ({useI18n: () => ({t: (key: string) => key})}));
 const mocks = vi.hoisted(() => ({ path: "/compute", get: vi.fn() }));
 vi.mock("vue-router", () => ({ useRoute: () => ({ path: mocks.path }) }));
 vi.mock("@/api/client", () => ({ default: { get: mocks.get } }));
@@ -38,13 +37,6 @@ describe("Compute resource view", () => {
     );
     const wrapper = mount(ComputeView, {
       global: {
-        plugins: [
-          createI18n({
-            legacy: false,
-            locale: "en",
-            messages: { en: { compute, common: { refresh: "Refresh" } } },
-          }),
-        ],
         stubs: { RouterLink: { template: "<a><slot /></a>" } },
       },
     });
