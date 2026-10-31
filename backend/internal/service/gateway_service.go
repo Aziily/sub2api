@@ -1400,16 +1400,19 @@ func mixedListingModelAllowed(groupPlatform, model string) bool {
 	return groupPlatform == PlatformGemini && isAntigravityGeminiModel(model)
 }
 
-// collapseAntigravityModelForListing keeps one public Opus 5.5 model while
-// request routing still accepts the legacy -low/-medium/-high aliases. The
-// effort is selected from output_config.effort at dispatch time.
+// collapseAntigravityModelForListing keeps one public model for effort-based
+// Antigravity models while request routing still accepts the legacy suffix
+// aliases. The effort is selected from the request body at dispatch time.
 func collapseAntigravityModelForListing(platform, model string) string {
-	if platform != PlatformAntigravity {
+	if platform != PlatformAntigravity && platform != PlatformGemini {
 		return model
 	}
 	for _, level := range []string{"low", "medium", "high"} {
 		if model == "claude-opus-5-5-"+level {
 			return "claude-opus-5-5"
+		}
+		if model == "gemini-4-argon-"+level {
+			return "gemini-4-argon"
 		}
 	}
 	return model

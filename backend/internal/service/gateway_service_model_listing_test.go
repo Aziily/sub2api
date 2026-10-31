@@ -12,6 +12,10 @@ func TestCollapseAntigravityModelForListing(t *testing.T) {
 		{PlatformAntigravity, "claude-opus-5-5-medium", "claude-opus-5-5"},
 		{PlatformAntigravity, "claude-opus-5-5-high", "claude-opus-5-5"},
 		{PlatformAntigravity, "claude-opus-5-5", "claude-opus-5-5"},
+		{PlatformAntigravity, "gemini-4-argon-low", "gemini-4-argon"},
+		{PlatformAntigravity, "gemini-4-argon-medium", "gemini-4-argon"},
+		{PlatformAntigravity, "gemini-4-argon-high", "gemini-4-argon"},
+		{PlatformGemini, "gemini-4-argon-high", "gemini-4-argon"},
 		{PlatformAntigravity, "claude-sonnet-5-5-high", "claude-sonnet-5-5-high"},
 		{PlatformAnthropic, "claude-opus-5-5-high", "claude-opus-5-5-high"},
 	}
