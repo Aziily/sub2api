@@ -165,14 +165,18 @@ var (
 		LiteLLMProvider: "anthropic", Mode: "chat", SupportsPromptCaching: true,
 	}
 	openAIGPT56SolFallbackPricing = &LiteLLMModelPricing{
-		InputCostPerToken:                   5e-06,
-		InputCostPerTokenPriority:           1e-05,
-		OutputCostPerToken:                  3e-05,
-		OutputCostPerTokenPriority:          6e-05,
-		CacheCreationInputTokenCost:         6.25e-06,
-		CacheCreationInputTokenCostPriority: 1.25e-05,
-		CacheReadInputTokenCost:             5e-07,
-		CacheReadInputTokenCostPriority:     1e-06,
+		// Official GPT-5.6 Sol pricing (2026-08-21 promotional rate):
+		// $4/$20 per million input/output tokens, $0.40 cached input,
+		// and cache writes at 1.25x input. Long-context multipliers below
+		// produce the documented $8/$30 rates above 272K input tokens.
+		InputCostPerToken:                   4e-06,
+		InputCostPerTokenPriority:           8e-06,
+		OutputCostPerToken:                  2e-05,
+		OutputCostPerTokenPriority:          4e-05,
+		CacheCreationInputTokenCost:         5e-06,
+		CacheCreationInputTokenCostPriority: 1e-05,
+		CacheReadInputTokenCost:             4e-07,
+		CacheReadInputTokenCostPriority:     8e-07,
 		SupportsServiceTier:                 true,
 		LiteLLMProvider:                     "openai",
 		Mode:                                "chat",
