@@ -388,7 +388,14 @@ func normalizeUpdateGroupInputForSimpleMode(input *UpdateGroupInput) {
 	if input == nil {
 		return
 	}
-	*input = UpdateGroupInput{Name: input.Name, Description: input.Description, I18n: input.I18n}
+	// Simple mode keeps group administration intentionally small, but the
+	// model allowlist is still a safety boundary for a public API key. Preserve
+	// it here so an administrator can restrict a group without enabling the
+	// advanced billing and routing controls.
+	*input = UpdateGroupInput{
+		Name: input.Name, Description: input.Description, I18n: input.I18n,
+		ModelAllowlist: input.ModelAllowlist,
+	}
 }
 
 func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupInput) (*Group, error) {

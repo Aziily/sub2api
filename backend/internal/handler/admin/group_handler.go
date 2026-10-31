@@ -150,6 +150,10 @@ type simpleModeGroupResponse struct {
 	SortOrder               int       `json:"sort_order"`
 	CreatedAt               time.Time `json:"created_at"`
 	UpdatedAt               time.Time `json:"updated_at"`
+
+	// Simple mode still exposes the model safety boundary so the admin UI can
+	// show and edit the allowlist without exposing advanced group controls.
+	ModelAllowlist service.GroupModelAllowlist `json:"model_allowlist"`
 }
 
 func groupForSimpleMode(group *service.Group) *simpleModeGroupResponse {
@@ -163,6 +167,7 @@ func groupForSimpleMode(group *service.Group) *simpleModeGroupResponse {
 		AccountCount:       group.AccountCount,
 		ActiveAccountCount: group.ActiveAccountCount, RateLimitedAccountCount: group.RateLimitedAccountCount,
 		SortOrder: group.SortOrder, CreatedAt: group.CreatedAt, UpdatedAt: group.UpdatedAt,
+		ModelAllowlist:     group.ModelAllowlist,
 	}
 }
 
@@ -180,7 +185,10 @@ func sanitizeUpdateGroupRequestForSimpleMode(req *UpdateGroupRequest) {
 	if req == nil {
 		return
 	}
-	*req = UpdateGroupRequest{Name: req.Name, Description: req.Description, I18n: req.I18n}
+	*req = UpdateGroupRequest{
+		Name: req.Name, Description: req.Description, I18n: req.I18n,
+		ModelAllowlist: req.ModelAllowlist,
+	}
 }
 
 // CreateGroupRequest represents create group request
