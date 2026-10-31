@@ -303,6 +303,9 @@ func (s *AntigravityGatewayService) getMappedModel(account *Account, requestedMo
 // 404 "Requested entity was not found." 拒绝，因此所有转发入口都必须经过这一步。
 // thinkingLevel 为空时按 high 兜底；调用方可按自身协议传入推导出的档位。
 func (s *AntigravityGatewayService) getMappedModelForThinkingLevel(account *Account, requestedModel string, thinkingLevel string) string {
+	if mapped, ok := resolveClaudeThinkingVariantForLevel(account, requestedModel, thinkingLevel); ok {
+		return mapped
+	}
 	if mapped, ok := resolveGeminiThinkingVariantForLevel(account, requestedModel, thinkingLevel); ok {
 		return mapped
 	}

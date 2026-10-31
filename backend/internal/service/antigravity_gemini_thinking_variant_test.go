@@ -144,6 +144,42 @@ func TestGeminiThinkingLevelFromClaudeThinking(t *testing.T) {
 	}
 }
 
+func TestGeminiThinkingLevelFromClaudeBodyUsesOutputEffort(t *testing.T) {
+	for _, tc := range []struct {
+		effort string
+		want   string
+	}{
+		{"low", "low"}, {"medium", "medium"}, {"high", "high"},
+		{"xhigh", "high"}, {"max", "high"},
+	} {
+		t.Run(tc.effort, func(t *testing.T) {
+			body := []byte(`{"model":"claude-opus-5-5","thinking":{"type":"adaptive"},"output_config":{"effort":"` + tc.effort + `"}}`)
+			require.Equal(t, tc.want, geminiThinkingLevelFromClaudeBody(body))
+		})
+	}
+}
+
+func TestClaudeThinkingVariantMapsCanonicalOpusByEffort(t *testing.T) {
+	svc := &AntigravityGatewayService{}
+	account := newAntigravityAccountWithMapping(map[string]string{
+		"claude-opus-5-5":        "claude-opus-5-5-high",
+		"claude-opus-5-5-low":    "claude-opus-5-5-low",
+		"claude-opus-5-5-medium": "claude-opus-5-5-medium",
+		"claude-opus-5-5-high":   "claude-opus-5-5-high",
+	})
+	for _, tc := range []struct{ level, want string }{
+		{"low", "claude-opus-5-5-low"},
+		{"medium", "claude-opus-5-5-medium"},
+		{"high", "claude-opus-5-5-high"},
+	} {
+		t.Run(tc.level, func(t *testing.T) {
+			require.Equal(t, tc.want, svc.getMappedModelForThinkingLevel(account, "claude-opus-5-5", tc.level))
+		})
+	}
+	// Existing suffixed IDs remain valid for clients that already use them.
+	require.Equal(t, "claude-opus-5-5-low", svc.getMappedModel(account, "claude-opus-5-5-low"))
+}
+
 // 锁定线上 404 回归：Chat Completions / Messages 兼容层收到裸 Gemini 模型名时，
 // 必须和 Gemini 原生路径一样解析到带后缀的上游变体，而不是把裸名透传给上游。
 func TestResolveGeminiThinkingVariantForLevel_CompatPathResolvesBareModel(t *testing.T) {

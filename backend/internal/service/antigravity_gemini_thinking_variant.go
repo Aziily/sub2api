@@ -108,6 +108,83 @@ func geminiThinkingLevelFromClaudeThinking(thinking *antigravity.ThinkingConfig)
 	}
 }
 
+// geminiThinkingLevelFromClaudeBody extracts the public Claude effort setting
+// before falling back to the legacy budget based mapping. Antigravity exposes
+// Opus effort variants as separate upstream model IDs, while the public API
+// exposes one canonical model plus output_config.effort.
+func geminiThinkingLevelFromClaudeBody(body []byte) string {
+	if len(body) == 0 {
+		return "high"
+	}
+	var probe struct {
+		OutputConfig *struct {
+			Effort string `json:"effort"`
+		} `json:"output_config"`
+		Thinking *antigravity.ThinkingConfig `json:"thinking"`
+	}
+	if err := json.Unmarshal(body, &probe); err == nil && probe.OutputConfig != nil {
+		switch strings.ToLower(strings.TrimSpace(probe.OutputConfig.Effort)) {
+		case "low":
+			return "low"
+		case "medium":
+			return "medium"
+		case "high", "xhigh", "max":
+			return "high"
+		}
+	}
+	return geminiThinkingLevelFromClaudeThinking(probe.Thinking)
+}
+
+func claudeEffortVariant(model, candidate string) bool {
+	base := strings.TrimSpace(model)
+	for _, level := range []string{"low", "medium", "high"} {
+		if candidate == base+"-"+level {
+			return true
+		}
+	}
+	return false
+}
+
+// resolveClaudeThinkingVariantForLevel maps one canonical Claude model to the
+// corresponding Antigravity effort variant when that variant is configured.
+// A custom mapping to another model remains authoritative.
+func resolveClaudeThinkingVariantForLevel(account *Account, requestedModel, preferred string) (string, bool) {
+	if account == nil {
+		return "", false
+	}
+	model := strings.TrimSpace(strings.TrimPrefix(requestedModel, "models/"))
+	if !strings.HasPrefix(model, "claude-") || strings.HasSuffix(model, "-low") || strings.HasSuffix(model, "-medium") || strings.HasSuffix(model, "-high") {
+		return "", false
+	}
+	mapping := account.GetModelMapping()
+	if len(mapping) == 0 {
+		return "", false
+	}
+	mapped, matched := resolveRequestedModelInMapping(mapping, model)
+	if matched && mapped != model && !claudeEffortVariant(model, mapped) {
+		return "", false
+	}
+	if preferred == "" {
+		preferred = "high"
+	}
+	order := []string{preferred}
+	for _, level := range []string{"high", "medium", "low"} {
+		if level != preferred {
+			order = append(order, level)
+		}
+	}
+	for _, level := range order {
+		candidate := model + "-" + level
+		if target, ok := resolveRequestedModelInMapping(mapping, candidate); ok && strings.TrimSpace(target) != "" {
+			return target, true
+		}
+	}
+	if matched && claudeEffortVariant(model, mapped) {
+		return mapped, true
+	}
+	return "", false
+}
+
 // resolveGeminiThinkingVariant 为裸 Gemini 模型名挑选账号映射表里存在的思考深度变体。
 // 返回 (映射后的上游模型名, 是否命中)。未命中时调用方应回退到常规 getMappedModel 流程。
 func resolveGeminiThinkingVariant(account *Account, requestedModel string, body []byte) (string, bool) {

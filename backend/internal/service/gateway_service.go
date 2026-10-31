@@ -1400,6 +1400,21 @@ func mixedListingModelAllowed(groupPlatform, model string) bool {
 	return groupPlatform == PlatformGemini && isAntigravityGeminiModel(model)
 }
 
+// collapseAntigravityModelForListing keeps one public Opus 5.5 model while
+// request routing still accepts the legacy -low/-medium/-high aliases. The
+// effort is selected from output_config.effort at dispatch time.
+func collapseAntigravityModelForListing(platform, model string) string {
+	if platform != PlatformAntigravity {
+		return model
+	}
+	for _, level := range []string{"low", "medium", "high"} {
+		if model == "claude-opus-5-5-"+level {
+			return "claude-opus-5-5"
+		}
+	}
+	return model
+}
+
 func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64, platform string) []string {
 	cacheKey := modelsListCacheKey(groupID, platform)
 	if s.modelsListCache != nil {
@@ -1454,6 +1469,7 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 
 		mapping := acc.GetModelMapping()
 		for model := range mapping {
+			model = collapseAntigravityModelForListing(platform, model)
 			// Accounts pulled in through mixed scheduling only contribute the
 			// models that belong to the listing platform (e.g. an antigravity
 			// account's claude-* mappings must not surface on a gemini group).
