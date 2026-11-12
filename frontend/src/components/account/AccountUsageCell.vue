@@ -933,10 +933,11 @@ const antigravityProductQuotaCards = computed(() => {
       color: colors[index % colors.length]
     }))
   }
+  const argonShared = usageInfo.value?.subscription_tier?.toUpperCase() === 'ULTRA' && !byKey.has('gemini-argon-wtu')
   return [
     { key: 'gemini38', label: t('admin.accounts.usageWindow.antigravityGemini38Flash'), note: t('admin.accounts.usageWindow.antigravitySharedGemini'), windows: buildWindows(['gemini'], ['emerald', 'indigo']) },
     { key: 'opus55', label: t('admin.accounts.usageWindow.antigravityOpus55'), note: t('admin.accounts.usageWindow.antigravitySharedClaude'), windows: buildWindows(['3p'], ['amber', 'purple']) },
-    { key: 'gemini4', label: t('admin.accounts.usageWindow.antigravityGemini4'), note: t('admin.accounts.usageWindow.antigravityArgonWeeklyNote'), windows: buildWindows(['gemini-argon-wtu'], ['indigo', 'purple']) }
+    { key: 'gemini4', label: t('admin.accounts.usageWindow.antigravityGemini4'), note: t(argonShared ? 'admin.accounts.usageWindow.antigravitySharedGemini' : 'admin.accounts.usageWindow.antigravityArgonWeeklyNote'), windows: buildWindows([argonShared ? 'gemini' : 'gemini-argon-wtu'], ['indigo', 'purple']) }
   ].filter(card => card.windows.length > 0)
 })
 

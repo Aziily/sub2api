@@ -507,6 +507,22 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).not.toContain('gemini3Flash')
   })
 
+  it('Ultra Gemini 4 uses the shared Gemini bucket', async () => {
+    getUsage.mockResolvedValue({
+      subscription_tier: 'ULTRA',
+      antigravity_quota_groups: [
+        { key: 'gemini', windows: [{ window: '5h', utilization: 8 }, { window: 'weekly', utilization: 3 }] },
+        { key: '3p', windows: [{ window: 'weekly', utilization: 0 }] }
+      ]
+    })
+    const wrapper = mount(AccountUsageCell, {
+      props: { account: makeAccount({ id: 1015, platform: 'antigravity', type: 'oauth', extra: {} }) },
+      global: { stubs: { UsageProgressBar: { props: ['label', 'utilization'], template: '<div class="usage-bar">{{ label }}|{{ utilization }}</div>' }, AccountQuotaInfo: true } }
+    })
+    await flushPromises()
+    expect(wrapper.findAll('.usage-bar').map(bar => bar.text())).toEqual(['5h|8', '7d|3', '7d|0', '5h|8', '7d|3'])
+  })
+
   it('Antigravity query button refreshes past the server cache', async () => {
     const first = {
       antigravity_quota_groups: [
