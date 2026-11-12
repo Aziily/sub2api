@@ -294,17 +294,21 @@
         {{ error }}
       </div>
 
-      <!-- Real 5-hour and weekly windows per quota group (retrieveUserQuotaSummary) -->
-      <div v-else-if="antigravityQuotaGroupBars.length > 0" class="space-y-1">
-        <UsageProgressBar
-          v-for="bar in antigravityQuotaGroupBars"
-          :key="bar.key"
-          :label="bar.label"
-          :title="bar.title"
-          :utilization="bar.utilization"
-          :resets-at="bar.resetsAt"
-          :color="bar.color"
-        />
+      <!-- Three stable product families; each family renders the real shared upstream windows. -->
+      <div v-else-if="antigravityProductQuotaCards.length > 0" class="space-y-1.5">
+        <div v-for="card in antigravityProductQuotaCards" :key="card.key" class="space-y-0.5" :title="card.note">
+          <div class="text-[10px] font-medium text-gray-500 dark:text-gray-400">{{ card.label }}</div>
+          <div class="grid grid-cols-2 gap-x-1.5">
+            <UsageProgressBar
+              v-for="window in card.windows"
+              :key="window.key"
+              :label="window.label"
+              :utilization="window.utilization"
+              :resets-at="window.resetsAt"
+              :color="window.color"
+            />
+          </div>
+        </div>
 
         <div v-if="aiCreditsDisplay" class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
           💳 {{ t('admin.accounts.aiCreditsBalance') }}: {{ aiCreditsDisplay }}
@@ -882,39 +886,27 @@ const priorityAntigravityQuotas = computed(() => {
 })
 
 // ===== Antigravity quota groups (usageInfo.antigravity_quota_groups) =====
-// The summary reports each group's real 5-hour and weekly window. When present it replaces the
-// per-model bars below, which show only whichever window is tighter for each model.
-const antigravityQuotaGroupBars = computed(() => {
+// Upstream exposes shared buckets rather than independent model quotas. Keep the UI to three
+// product families while preserving the underlying bucket/window semantics.
+const antigravityProductQuotaCards = computed(() => {
   const groups = usageInfo.value?.antigravity_quota_groups
   if (!groups || groups.length === 0) return []
-  const bars: Array<{
-    key: string
-    label: string
-    title: string
-    utilization: number
-    resetsAt: string | null
-    color: 'indigo' | 'emerald' | 'purple' | 'amber'
-  }> = []
-  for (const group of groups) {
-    // 'gemini' = Gemini models, 'gemini-argon-wtu' = the separate Argon quota of Pro plans,
-    // '3p' (or anything else) = Antigravity's Claude and GPT models.
-    const family = group.key === 'gemini' ? 'Gemini' : group.key.startsWith('gemini-argon') ? 'Argon' : 'Other'
-    for (const window of group.windows || []) {
-      const weekly = window.window === 'weekly'
-      const labelKey = `admin.accounts.usageWindow.antigravity${family}${weekly ? 'Weekly' : '5h'}`
-      const color: 'indigo' | 'emerald' | 'purple' | 'amber' =
-        family === 'Gemini' ? (weekly ? 'indigo' : 'emerald') : family === 'Argon' ? 'indigo' : weekly ? 'purple' : 'amber'
-      bars.push({
-        key: `${group.key}-${window.window}`,
-        label: t(labelKey),
-        title: group.name,
-        utilization: Math.round(window.utilization ?? 0),
-        resetsAt: window.resets_at ?? null,
-        color
-      })
-    }
+  const byKey = new Map(groups.map(group => [group.key, group]))
+  const buildWindows = (groupKeys: string[], colors: Array<'indigo' | 'emerald' | 'amber' | 'purple'>): Array<{ key: string; label: string; utilization: number; resetsAt: string | null; color: 'indigo' | 'emerald' | 'amber' | 'purple' }> => {
+    const windows = groupKeys.flatMap(key => byKey.get(key)?.windows || [])
+    return windows.map((window, index) => ({
+      key: `${groupKeys.join('-')}-${window.window}`,
+      label: window.window === 'weekly' ? '7d' : '5h',
+      utilization: Math.round(window.utilization ?? 0),
+      resetsAt: window.resets_at ?? null,
+      color: colors[index % colors.length]
+    }))
   }
-  return bars
+  return [
+    { key: 'gemini38', label: t('admin.accounts.usageWindow.antigravityGemini38Flash'), note: t('admin.accounts.usageWindow.antigravitySharedGemini'), windows: buildWindows(['gemini'], ['emerald', 'indigo']) },
+    { key: 'opus55', label: t('admin.accounts.usageWindow.antigravityOpus55'), note: t('admin.accounts.usageWindow.antigravitySharedClaude'), windows: buildWindows(['3p'], ['amber', 'purple']) },
+    { key: 'gemini4', label: t('admin.accounts.usageWindow.antigravityGemini4'), note: t('admin.accounts.usageWindow.antigravityArgonWeeklyNote'), windows: buildWindows(['gemini-argon-wtu'], ['indigo', 'purple']) }
+  ].filter(card => card.windows.length > 0)
 })
 
 // ===== Antigravity quota from API (usageInfo.antigravity_quota) =====

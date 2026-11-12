@@ -477,12 +477,11 @@ describe('AccountUsageCell', () => {
 
     const bars = wrapper.findAll('.usage-bar').map((bar) => bar.text())
     expect(bars).toEqual([
-      'admin.accounts.usageWindow.antigravityGemini5h|60|2026-11-04T20:52:48Z',
-      'admin.accounts.usageWindow.antigravityGeminiWeekly|25|2026-11-11T15:52:48Z',
-      'admin.accounts.usageWindow.antigravityOther5h|0|',
-      'admin.accounts.usageWindow.antigravityOtherWeekly|10|2026-11-11T15:52:48Z',
-      // Pro plans' separate Argon quota is its own row, not a second Claude/GPT week.
-      'admin.accounts.usageWindow.antigravityArgonWeekly|20|2026-11-11T17:11:15Z'
+      '5h|60|2026-11-04T20:52:48Z',
+      '7d|25|2026-11-11T15:52:48Z',
+      '5h|0|',
+      '7d|10|2026-11-11T15:52:48Z',
+      '7d|20|2026-11-11T17:11:15Z'
     ])
     // The per-model figure (one tighter window per model) is not shown next to the real windows.
     expect(wrapper.text()).not.toContain('gemini3Flash')
