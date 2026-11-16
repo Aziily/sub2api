@@ -904,7 +904,7 @@ const shouldLazyLoadOnMobile = computed(() => {
 // Use one actual upstream entry per family. Never combine a percentage from
 // one level with a reset time from another, or substitute an older model.
 const priorityAntigravityModels = [
-  { label: 'Gemini 4', color: 'indigo' as const, ids: ['gemini-4-argon-high', 'gemini-4-argon-medium', 'gemini-4-argon-low'] },
+  { label: 'Gemini 4', color: 'indigo' as const, ids: ['gemini-4-argon-high', 'gemini-4-argon-medium', 'gemini-4-argon-low', 'gemini-4-carbon-high', 'gemini-4-carbon-medium', 'gemini-4-carbon-low'] },
   { label: 'Opus 5.5', color: 'amber' as const, ids: ['claude-opus-5-5-high', 'claude-opus-5-5-medium', 'claude-opus-5-5-low'] },
   { label: '3.8 Flash', color: 'emerald' as const, ids: ['gemini-3.8-flash-high', 'gemini-3.8-flash', 'gemini-3.8-flash-medium', 'gemini-3.8-flash-low'] }
 ]

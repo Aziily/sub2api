@@ -1414,6 +1414,9 @@ func collapseAntigravityModelForListing(platform, model string) string {
 		if model == "gemini-4-argon-"+level {
 			return "gemini-4-argon"
 		}
+		if model == "gemini-4-carbon-"+level {
+			return "gemini-4-carbon"
+		}
 	}
 	return model
 }

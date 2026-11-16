@@ -883,6 +883,11 @@ func (s *AntigravityGatewayService) setAntigravityModelRateLimits(ctx context.Co
 		return false
 	}
 	keys := antigravityModelRateLimitKeys(account, modelName)
+	// Capacity errors are model-specific. A 429 quota response uses the
+	// family key so the account's shared Claude bucket is cooled together.
+	if statusCode == http.StatusServiceUnavailable && isAntigravityClaudeQuotaModel(modelName) && len(keys) > 1 {
+		keys = keys[:1]
+	}
 	if len(keys) == 0 {
 		return false
 	}

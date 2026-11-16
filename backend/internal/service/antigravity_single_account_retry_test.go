@@ -252,7 +252,7 @@ func TestHandleSmartRetry_429_LongDelay_SingleAccountRetry_StillSwitches(t *test
 	require.Equal(t, smartRetryActionBreakWithResp, result.action)
 	// 429 即使有单账号标记，也应走切换账号
 	require.NotNil(t, result.switchError, "429 should still return switchError even with SingleAccountRetry")
-	require.Len(t, repo.modelRateLimitCalls, 1,
+	require.Len(t, repo.modelRateLimitCalls, 2,
 		"429 should still set model rate limit even with SingleAccountRetry")
 }
 

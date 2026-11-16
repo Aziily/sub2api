@@ -187,8 +187,9 @@ func TestHandleUpstreamError_429_ModelRateLimit(t *testing.T) {
 	require.True(t, result.Handled)
 	require.NotNil(t, result.SwitchError)
 	require.Equal(t, "claude-sonnet-4-5", result.SwitchError.RateLimitedModel)
-	require.Len(t, repo.modelRateLimitCalls, 1)
+	require.Len(t, repo.modelRateLimitCalls, 2)
 	require.Equal(t, "claude-sonnet-4-5", repo.modelRateLimitCalls[0].modelKey)
+	require.Equal(t, antigravityClaudeModelRateLimitKey, repo.modelRateLimitCalls[1].modelKey)
 }
 
 // TestHandleUpstreamError_429_NonModelRateLimit 测试 429 非模型限流场景（走模型级限流兜底）
@@ -205,7 +206,7 @@ func TestHandleUpstreamError_429_NonModelRateLimit(t *testing.T) {
 	// handleModelRateLimit 不会处理（因为没有 RATE_LIMIT_EXCEEDED），
 	// 但 429 兜底逻辑会使用 requestedModel 设置模型级限流
 	require.Nil(t, result)
-	require.Len(t, repo.modelRateLimitCalls, 1)
+	require.Len(t, repo.modelRateLimitCalls, 2)
 	require.Equal(t, "claude-sonnet-4-5", repo.modelRateLimitCalls[0].modelKey)
 }
 
@@ -221,8 +222,9 @@ func TestHandleUpstreamError_429_NonModelRateLimit_UsesMappedModelKey(t *testing
 	result := svc.handleUpstreamError(context.Background(), "[test]", account, http.StatusTooManyRequests, http.Header{}, body, "claude-opus-4-6", 0, "", false)
 
 	require.Nil(t, result)
-	require.Len(t, repo.modelRateLimitCalls, 1)
+	require.Len(t, repo.modelRateLimitCalls, 2)
 	require.Equal(t, "claude-opus-4-6-thinking", repo.modelRateLimitCalls[0].modelKey)
+	require.Equal(t, antigravityClaudeModelRateLimitKey, repo.modelRateLimitCalls[1].modelKey)
 }
 
 // TestHandleUpstreamError_503_ModelCapacityExhausted 测试 503 模型容量不足场景
@@ -895,7 +897,7 @@ func TestSetAntigravityModelRateLimits_DoesNotDoubleMapCustomChain(t *testing.T)
 	)
 
 	require.True(t, success)
-	require.Len(t, repo.modelRateLimitCalls, 1)
+	require.Len(t, repo.modelRateLimitCalls, 2)
 	require.Equal(t, "claude-sonnet-4-5", repo.modelRateLimitCalls[0].modelKey)
 }
 
@@ -922,7 +924,7 @@ func TestSetModelRateLimitAndClearSession_UsesUpstreamReportedModelMetadata(t *t
 		ModelName:  "claude-sonnet-4-5",
 	})
 
-	require.Len(t, repo.modelRateLimitCalls, 1)
+	require.Len(t, repo.modelRateLimitCalls, 2)
 	require.Equal(t, "claude-sonnet-4-5", repo.modelRateLimitCalls[0].modelKey)
 }
 

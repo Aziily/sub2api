@@ -187,7 +187,7 @@ func TestHandleSmartRetry_LongDelay_ReturnsSwitchError(t *testing.T) {
 	require.True(t, result.switchError.IsStickySession)
 
 	// 验证模型限流已设置
-	require.Len(t, repo.modelRateLimitCalls, 1)
+	require.Len(t, repo.modelRateLimitCalls, 2)
 	require.Equal(t, "claude-sonnet-4-5", repo.modelRateLimitCalls[0].modelKey)
 }
 
@@ -725,7 +725,7 @@ func TestHandleSmartRetry_NetworkError_ExhaustsRetry(t *testing.T) {
 	require.Len(t, upstream.calls, 1, "should have made one retry call")
 
 	// 验证模型限流已设置
-	require.Len(t, repo.modelRateLimitCalls, 1)
+	require.Len(t, repo.modelRateLimitCalls, 2)
 	require.Equal(t, "claude-sonnet-4-5", repo.modelRateLimitCalls[0].modelKey)
 }
 
@@ -782,7 +782,7 @@ func TestHandleSmartRetry_NoRetryDelay_UsesDefaultRateLimit(t *testing.T) {
 	require.True(t, result.switchError.IsStickySession)
 
 	// 验证模型限流已设置
-	require.Len(t, repo.modelRateLimitCalls, 1)
+	require.Len(t, repo.modelRateLimitCalls, 2)
 	require.Equal(t, "claude-sonnet-4-5", repo.modelRateLimitCalls[0].modelKey)
 }
 
@@ -882,7 +882,7 @@ func TestHandleSmartRetry_ShortDelay_StickySession_FailedRetry_ClearsSession(t *
 	require.Len(t, upstream.calls, 1, "should make exactly 1 retry call (maxAttempts=1)")
 
 	// 验证模型限流已设置
-	require.Len(t, repo.modelRateLimitCalls, 1)
+	require.Len(t, repo.modelRateLimitCalls, 2)
 	require.Equal(t, "claude-sonnet-4-5", repo.modelRateLimitCalls[0].modelKey)
 }
 

@@ -70,7 +70,8 @@ const geminiModels = [
   'gemini-3.6-flash',
   'gemini-3.7-flash',
   'gemini-3.8-flash',
-  'gemini-4-argon'
+  'gemini-4-argon',
+  'gemini-4-carbon'
 ]
 
 // Antigravity 官方支持的模型（精确匹配）
@@ -130,6 +131,10 @@ const antigravityModels = [
   'gemini-4-argon-low',
   'gemini-4-argon-medium',
   'gemini-4-argon-high',
+  // Gemini 4 Carbon 系列
+  'gemini-4-carbon-low',
+  'gemini-4-carbon-medium',
+  'gemini-4-carbon-high',
   // 其他
   'gpt-oss-120b-medium',
   'tab_flash_lite_preview'
@@ -406,6 +411,7 @@ const antigravityPresetMappings = [
   { label: '4 Argon High', from: 'gemini-4-argon-high', to: 'gemini-4-argon-high', color: 'bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-400' },
   { label: '4 Argon Medium', from: 'gemini-4-argon-medium', to: 'gemini-4-argon-medium', color: 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-400' },
   { label: '4 Argon Low', from: 'gemini-4-argon-low', to: 'gemini-4-argon-low', color: 'bg-lime-100 text-lime-700 hover:bg-lime-200 dark:bg-lime-900/30 dark:text-lime-400' },
+  { label: '4 Carbon→High', from: 'gemini-4-carbon', to: 'gemini-4-carbon-high', color: 'bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-900/30 dark:text-sky-400' },
   { label: '3.8 Flash', from: 'gemini-3.8-flash', to: 'gemini-3.8-flash', color: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400' },
   { label: '3.8 Flash High', from: 'gemini-3.8-flash-high', to: 'gemini-3.8-flash-high', color: 'bg-teal-100 text-teal-700 hover:bg-teal-200 dark:bg-teal-900/30 dark:text-teal-400' },
   { label: 'Opus 5.5→High', from: 'claude-opus-5-5', to: 'claude-opus-5-5-high', color: 'bg-pink-100 text-pink-700 hover:bg-pink-200 dark:bg-pink-900/30 dark:text-pink-400' },

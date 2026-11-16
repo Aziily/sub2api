@@ -14,6 +14,7 @@ const (
 	modelRateLimitsKey                 = "model_rate_limits"
 	antigravityGeminiModelRateLimitKey = "antigravity:gemini"
 	antigravityArgonModelRateLimitKey  = "antigravity:gemini:argon"
+	antigravityClaudeModelRateLimitKey = "antigravity:claude"
 	openAIImageGenerationRateLimitKey  = "openai:image_generation"
 	openAICodexSparkRateLimitReason    = "openai_codex_spark_rate_limit"
 	// anthropicFableRateLimitKey 是 Anthropic 7d_oi（Fable 专属 7d 窗口）限流的
@@ -165,6 +166,9 @@ func antigravityModelRateLimitKeys(account *Account, model string) []string {
 		return nil
 	}
 	keys := []string{model}
+	if isAntigravityClaudeQuotaModel(model) && model != antigravityClaudeModelRateLimitKey {
+		return append(keys, antigravityClaudeModelRateLimitKey)
+	}
 	if isAntigravityGeminiModel(model) && !isAntigravityGeminiImageModel(model) && model != antigravityGeminiModelRateLimitKey {
 		familyKey := antigravityGeminiModelRateLimitKey
 		// Pro has a separate Argon quota pool. Ultra and unknown plans retain
@@ -178,6 +182,11 @@ func antigravityModelRateLimitKeys(account *Account, model string) []string {
 		keys = append(keys, familyKey)
 	}
 	return keys
+}
+
+func isAntigravityClaudeQuotaModel(model string) bool {
+	normalized := normalizeAntigravityModelName(model)
+	return strings.HasPrefix(normalized, "claude-") || strings.HasPrefix(normalized, "gpt-oss-")
 }
 
 func isAntigravityGeminiImageModel(model string) bool {
