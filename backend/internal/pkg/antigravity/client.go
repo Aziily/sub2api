@@ -38,6 +38,9 @@ func NewAPIRequestWithURL(ctx context.Context, baseURL, action, accessToken stri
 	if isStream {
 		apiURL += "?alt=sse"
 	}
+	if action == "generateContent" || isStream {
+		body = RewriteCodexPromptForAntigravity(body)
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(body))
 	if err != nil {
