@@ -68,6 +68,19 @@ func appendUsageLogBillingModeWhereCondition(conditions []string, args []any, bi
 	return appendUsageLogBillingModeWhereConditionWithAlias(conditions, args, billingMode, "")
 }
 
+func appendUsageLogPlatformWhereCondition(conditions []string, args []any, platform, usageTable string) ([]string, []any) {
+	platform = strings.ToLower(strings.TrimSpace(platform))
+	if platform == "" {
+		return conditions, args
+	}
+	placeholder := fmt.Sprintf("$%d", len(args)+1)
+	// Resolve the platform exactly as dashboard/ops aggregation does. The
+	// correlated query keeps the normal usage list query free of extra joins.
+	expr := "CASE WHEN g.platform = 'composite' THEN a.platform ELSE COALESCE(NULLIF(g.platform,''), a.platform) END"
+	condition := fmt.Sprintf("EXISTS (SELECT 1 FROM accounts a LEFT JOIN groups g ON g.id = %s.group_id WHERE a.id = %s.account_id AND lower(COALESCE(%s, 'unknown')) = %s)", usageTable, usageTable, expr, placeholder)
+	return append(conditions, condition), append(args, platform)
+}
+
 func appendUsageLogBillingModeWhereConditionWithAlias(conditions []string, args []any, billingMode string, alias string) ([]string, []any) {
 	mode := strings.TrimSpace(billingMode)
 	if mode == "" {

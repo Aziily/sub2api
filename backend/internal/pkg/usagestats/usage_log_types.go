@@ -269,6 +269,9 @@ type PlatformDashboardStats struct {
 
 // UsageLogFilters represents filters for usage log queries
 type UsageLogFilters struct {
+	// Platform filters by the effective routed platform (group platform, with
+	// composite groups falling back to the selected account platform).
+	Platform  string
 	UserID    int64
 	APIKeyID  int64
 	AccountID int64
