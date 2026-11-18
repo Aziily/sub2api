@@ -270,16 +270,27 @@ func chatAssistantToResponses(m ChatMessage) ([]ResponsesInputItem, error) {
 		items = append(items, ResponsesInputItem{Type: "message", Role: "assistant", Content: partsJSON})
 	}
 
-	// Emit one function_call item per tool_call.
+	// Emit one function_call item per tool_call (including custom/freeform tool calls).
 	for _, tc := range m.ToolCalls {
+		name := strings.TrimSpace(tc.Function.Name)
 		args := tc.Function.Arguments
-		if args == "" {
-			args = "{}"
+		if (tc.Type == "custom" || name == "") && tc.Custom != nil {
+			if name == "" {
+				name = strings.TrimSpace(tc.Custom.Name)
+			}
+			if args == "" {
+				wrapped, _ := json.Marshal(map[string]string{"input": tc.Custom.Input})
+				args = string(wrapped)
+			}
 		}
+		if name == "" {
+			continue
+		}
+		args = normalizeToolCallArgumentsJSONObject(args)
 		items = append(items, ResponsesInputItem{
 			Type:      "function_call",
 			CallID:    tc.ID,
-			Name:      tc.Function.Name,
+			Name:      name,
 			Arguments: args,
 		})
 	}
@@ -531,6 +542,15 @@ func convertChatToolsToResponses(tools []ChatTool, functions []ChatFunction) []R
 			out = append(out, ResponsesTool{Type: toolType})
 			continue
 		}
+		if toolType == "custom" && t.Custom != nil && strings.TrimSpace(t.Custom.Name) != "" {
+			out = append(out, ResponsesTool{
+				Type:        "custom",
+				Name:        strings.TrimSpace(t.Custom.Name),
+				Description: t.Custom.Description,
+				Parameters:  json.RawMessage(customToolInputSchema),
+			})
+			continue
+		}
 		if t.Type != "function" || t.Function == nil {
 			continue
 		}
@@ -619,4 +639,21 @@ func convertChatFunctionCallToToolChoice(raw json.RawMessage) (json.RawMessage, 
 		"type": "function",
 		"name": obj.Name,
 	})
+}
+
+
+func normalizeToolCallArgumentsJSONObject(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "{}"
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(trimmed), &obj); err == nil && obj != nil {
+		return trimmed
+	}
+	wrapped, err := json.Marshal(map[string]string{"input": raw})
+	if err != nil {
+		return "{}"
+	}
+	return string(wrapped)
 }

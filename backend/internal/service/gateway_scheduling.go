@@ -1548,18 +1548,21 @@ func (s *GatewayService) getSchedulableAccount(ctx context.Context, accountID in
 	return account, nil
 }
 
+// filterAccountsBySchedulingThreshold 在 accounts 上原地剔除被调度阈值暂停的账号并返回剔除后的切片；
+// accounts 必须由调用方独占，调用后只能使用返回值。
 func (s *GatewayService) filterAccountsBySchedulingThreshold(ctx context.Context, accounts []Account) []Account {
 	if len(accounts) == 0 {
 		return accounts
 	}
 
-	filtered := make([]Account, 0, len(accounts))
+	filtered := accounts[:0]
 	for i := range accounts {
 		if s.isAccountBlockedBySchedulingThreshold(ctx, &accounts[i]) {
 			continue
 		}
 		filtered = append(filtered, accounts[i])
 	}
+	clear(accounts[len(filtered):])
 	return filtered
 }
 
@@ -2636,12 +2639,15 @@ func (s *GatewayService) isModelSupportedByAccountWithContext(ctx context.Contex
 		}
 		// 使用与转发阶段一致的映射逻辑：自定义映射优先 → 默认映射兜底
 		mapped := mapAntigravityModel(account, requestedModel)
-		if mapped == "" {
+		if mapped == "" || isAntigravityModelDisabledForAccount(account, mapped) {
 			return false
 		}
 		// 应用 thinking 后缀后检查最终模型是否在账号映射中
 		if enabled, ok := ThinkingEnabledFromContext(ctx); ok {
 			finalModel := applyThinkingModelSuffix(mapped, enabled)
+			if isAntigravityModelDisabledForAccount(account, finalModel) {
+				return false
+			}
 			if finalModel == mapped {
 				return true // thinking 后缀未改变模型名，映射已通过
 			}
@@ -2658,14 +2664,15 @@ func (s *GatewayService) isModelSupportedByAccount(account *Account, requestedMo
 		if strings.TrimSpace(requestedModel) == "" {
 			return true
 		}
-		return mapAntigravityModel(account, requestedModel) != ""
+		mapped := mapAntigravityModel(account, requestedModel)
+		return mapped != "" && !isAntigravityModelDisabledForAccount(account, mapped)
 	}
 	if account.IsBedrock() {
 		_, ok := ResolveBedrockModelID(account, requestedModel)
 		return ok
 	}
-	// OpenAI 透传模式：仅替换认证，允许所有模型
-	if account.Platform == PlatformOpenAI && account.IsOpenAIPassthroughEnabled() {
+	// Passthrough ignores leftover mappings unless model filtering is enabled.
+	if account.IsOpenAIPassthroughEnabled() && !account.IsOpenAIPassthroughModelFilterEnabled() {
 		return true
 	}
 	// OAuth/SetupToken 账号使用 Anthropic 标准映射（短ID → 长ID）
@@ -2678,4 +2685,41 @@ func (s *GatewayService) isModelSupportedByAccount(account *Account, requestedMo
 	}
 	// 其他平台使用账户的模型支持检查
 	return account.IsModelSupported(requestedModel)
+}
+
+// isAntigravityModelDisabledForAccount checks whether upstream model metadata or
+// non-Ultra plan tier explicitly disables an Antigravity model (e.g. gemini-4-carbon-disabled on Pro).
+func isAntigravityModelDisabledForAccount(account *Account, targetModel string) bool {
+	if account == nil || targetModel == "" {
+		return false
+	}
+	lower := strings.ToLower(strings.TrimSpace(targetModel))
+	base := lower
+	for _, suffix := range []string{"-xhigh", "-high", "-medium", "-low", "-tiered"} {
+		if strings.HasSuffix(base, suffix) {
+			base = strings.TrimSuffix(base, suffix)
+			break
+		}
+	}
+	if account.Extra != nil {
+		if meta, ok := account.Extra[UpstreamModelMetadataExtraKey].(map[string]any); ok {
+			if models, ok := meta["models"].(map[string]any); ok && len(models) > 0 {
+				if _, exists := models[lower]; exists {
+					return false
+				}
+				if _, disabled := models[base+"-disabled"]; disabled {
+					return true
+				}
+			}
+		}
+	}
+	if base == "gemini-4-carbon" && account.Credentials != nil {
+		if planType, ok := account.Credentials["plan_type"].(string); ok {
+			pt := strings.ToLower(strings.TrimSpace(planType))
+			if pt != "" && !strings.Contains(pt, "ultra") {
+				return true
+			}
+		}
+	}
+	return false
 }

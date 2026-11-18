@@ -154,9 +154,9 @@ func (s *antigravityCompatStreamSession) hasMeaningfulData() bool {
 }
 
 func (s *antigravityCompatStreamSession) writePreContentKeepalive(now time.Time) {
-	// Intentional tradeoff: this commits HTTP 200 after 15s, so later upstream
+	// Intentional tradeoff: this commits HTTP 200 after the keepalive interval, so later upstream
 	// failures cannot fail over; report them as SSE errors to the client instead.
-	if s.hasMeaningfulData() || s.writer.Disconnected() || now.Sub(s.startTime) < s.preContentKeepaliveInterval {
+	if s.hasMeaningfulData() || s.writer.Disconnected() || (!s.preContentKeepaliveSent && now.Sub(s.startTime) < s.preContentKeepaliveInterval) {
 		return
 	}
 	if s.writer.Write([]byte(": ping\n\n")) {
@@ -171,7 +171,7 @@ func (s *antigravityCompatStreamSession) finish() (*antigravityStreamResult, err
 	if !s.hasMeaningfulData() && !s.writer.Disconnected() {
 		if s.preContentKeepaliveSent {
 			s.adapter.WriteError(s.writer, "empty_stream")
-			return s.result(false), errors.New("empty Antigravity compatibility stream after keepalive")
+			return s.result(false), newAntigravityCompatCommittedNoContentError("empty Antigravity compatibility stream after keepalive")
 		}
 		return nil, antigravityCompatEmptyStreamError()
 	}
@@ -282,11 +282,51 @@ func (s *AntigravityGatewayService) handleAntigravityCompatStream(
 	adapter antigravityCompatStreamAdapter,
 	prefix string,
 ) (*antigravityStreamResult, error) {
-	return s.handleAntigravityCompatStreamWithKeepaliveInterval(c, resp, startTime, originalModel, adapter, prefix, antigravityCompatPreContentKeepaliveInterval, antigravityCompatPreContentMaxWait)
+	return s.handleAntigravityCompatStreamWithKeepaliveInterval(
+		c,
+		resp,
+		startTime,
+		originalModel,
+		adapter,
+		prefix,
+		antigravityCompatPreContentKeepaliveInterval,
+		s.antigravityCompatPreContentMaxWait(),
+	)
+}
+
+// handleAntigravityCompatStreamAfterHeaders starts reading an upstream HTTP 200 SSE
+// stream while keeping startTime for TTFT measurement and anchoring the pre-content
+// deadline at response-header arrival rather than request start.
+func (s *AntigravityGatewayService) handleAntigravityCompatStreamAfterHeaders(
+	c *gin.Context,
+	resp *http.Response,
+	startTime time.Time,
+	originalModel string,
+	adapter antigravityCompatStreamAdapter,
+	prefix string,
+) (*antigravityStreamResult, error) {
+	return s.handleAntigravityCompatStreamWithTiming(
+		c,
+		resp,
+		startTime,
+		time.Now(),
+		originalModel,
+		adapter,
+		prefix,
+		s.antigravityCompatPreContentKeepaliveInterval(),
+		s.antigravityCompatPreContentMaxWait(),
+	)
 }
 
 func (s *AntigravityGatewayService) handleAntigravityCompatStreamWithKeepaliveInterval(
 	c *gin.Context, resp *http.Response, startTime time.Time, originalModel string,
+	adapter antigravityCompatStreamAdapter, prefix string, interval, maxPreContentWait time.Duration,
+) (*antigravityStreamResult, error) {
+	return s.handleAntigravityCompatStreamWithTiming(c, resp, startTime, startTime, originalModel, adapter, prefix, interval, maxPreContentWait)
+}
+
+func (s *AntigravityGatewayService) handleAntigravityCompatStreamWithTiming(
+	c *gin.Context, resp *http.Response, startTime, streamStart time.Time, originalModel string,
 	adapter antigravityCompatStreamAdapter, prefix string, interval, maxPreContentWait time.Duration,
 ) (*antigravityStreamResult, error) {
 	flusher, ok := c.Writer.(http.Flusher)
@@ -303,6 +343,7 @@ func (s *AntigravityGatewayService) handleAntigravityCompatStreamWithKeepaliveIn
 		c.Status(http.StatusOK)
 	}
 	session := newAntigravityCompatStreamSession(originalModel, startTime, adapter, writer)
+	session.preContentKeepaliveSent = IsResponseCommitted(c) && c.Writer.Written()
 	session.preContentKeepaliveInterval = interval
 	events, stopScanner, maxLineSize, queueBudget := s.startAntigravityCompatScanner(resp.Body)
 	defer stopScanner()
@@ -316,13 +357,17 @@ func (s *AntigravityGatewayService) handleAntigravityCompatStreamWithKeepaliveIn
 	if keepaliveTicker != nil {
 		defer keepaliveTicker.Stop()
 	}
-	preContentDelay := time.Until(startTime.Add(interval))
+	keepaliveStart := startTime
+	if session.preContentKeepaliveSent {
+		keepaliveStart = streamStart
+	}
+	preContentDelay := time.Until(keepaliveStart.Add(interval))
 	if preContentDelay < 0 {
 		preContentDelay = 0
 	}
 	preContentTimer := time.NewTimer(preContentDelay)
 	defer preContentTimer.Stop()
-	preContentDeadline := startTime.Add(maxPreContentWait)
+	preContentDeadline := streamStart.Add(maxPreContentWait)
 	deadlineDelay := time.Until(preContentDeadline)
 	if deadlineDelay < 0 {
 		deadlineDelay = 0
@@ -332,7 +377,7 @@ func (s *AntigravityGatewayService) handleAntigravityCompatStreamWithKeepaliveIn
 	preContentTimeout := func() (*antigravityStreamResult, error) {
 		if session.preContentKeepaliveSent {
 			writeAntigravityCompatStreamError(c, adapter, writer, "stream_timeout")
-			return session.collectResult(false), fmt.Errorf("pre-content stream timeout")
+			return session.collectResult(false), newAntigravityCompatCommittedNoContentError("pre-content stream timeout")
 		}
 		return nil, antigravityCompatEmptyStreamError()
 	}
@@ -391,9 +436,26 @@ func (s *AntigravityGatewayService) handleAntigravityCompatStreamWithKeepaliveIn
 }
 
 func handleAntigravityCompatEmptyStream(c *gin.Context, session *antigravityCompatStreamSession) (*antigravityStreamResult, error) {
+	if c != nil {
+		if rawMax, ok := c.Get("antigravity_compat_max_tokens"); ok {
+			if maxTok, ok := rawMax.(int); ok && maxTok > 0 && maxTok <= 32 {
+				finalEvents, usage := session.processor.Finish()
+				mergeAntigravityCompatUsage(session.usage, usage)
+				session.consumeClaudeEvents(finalEvents)
+				if session.processor.MessageStartSent() && (session.usage.InputTokens > 0 || session.usage.OutputTokens > 0) {
+					for i := range session.pendingEvents {
+						session.adapter.Emit(&session.pendingEvents[i], session.writer)
+					}
+					session.pendingEvents = nil
+					session.adapter.Finalize(session.writer)
+					return session.result(session.writer.Disconnected()), nil
+				}
+			}
+		}
+	}
 	if session.preContentKeepaliveSent {
 		writeAntigravityCompatStreamError(c, session.adapter, session.writer, "empty_stream")
-		return session.collectResult(false), errors.New("empty Antigravity compatibility stream after keepalive")
+		return session.collectResult(false), newAntigravityCompatCommittedNoContentError("empty Antigravity compatibility stream after keepalive")
 	}
 	return nil, antigravityCompatEmptyStreamError()
 }
@@ -445,6 +507,24 @@ func (s *AntigravityGatewayService) antigravityCompatStreamTimeout() time.Durati
 		return 0
 	}
 	return time.Duration(s.settingService.cfg.Gateway.StreamDataIntervalTimeout) * time.Second
+}
+
+func (s *AntigravityGatewayService) antigravityCompatPreContentKeepaliveInterval() time.Duration {
+	interval := antigravityCompatPreContentKeepaliveInterval
+	if s.settingService != nil && s.settingService.cfg != nil {
+		configured := time.Duration(s.settingService.cfg.Gateway.StreamKeepaliveInterval) * time.Second
+		if configured > 0 && configured < interval {
+			interval = configured
+		}
+	}
+	return interval
+}
+
+func (s *AntigravityGatewayService) antigravityCompatPreContentMaxWait() time.Duration {
+	if timeout := s.antigravityCompatStreamTimeout(); timeout > antigravityCompatPreContentMaxWait {
+		return timeout
+	}
+	return antigravityCompatPreContentMaxWait
 }
 
 func (s *AntigravityGatewayService) newAntigravityCompatKeepaliveTicker() (*time.Ticker, <-chan time.Time) {
@@ -532,7 +612,7 @@ func (s *AntigravityGatewayService) handleChatCompletionsStreamingFromAntigravit
 	originalModel string,
 	includeUsage bool,
 ) (*antigravityStreamResult, error) {
-	return s.handleAntigravityCompatStream(
+	return s.handleAntigravityCompatStreamAfterHeaders(
 		c,
 		resp,
 		startTime,
@@ -548,7 +628,7 @@ func (s *AntigravityGatewayService) handleResponsesStreamingFromAntigravity(
 	startTime time.Time,
 	originalModel string,
 ) (*antigravityStreamResult, error) {
-	return s.handleAntigravityCompatStream(
+	return s.handleAntigravityCompatStreamAfterHeaders(
 		c,
 		resp,
 		startTime,

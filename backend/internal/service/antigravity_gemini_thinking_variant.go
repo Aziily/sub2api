@@ -124,7 +124,7 @@ func geminiThinkingLevelFromClaudeBody(body []byte) string {
 	}
 	if err := json.Unmarshal(body, &probe); err == nil && probe.OutputConfig != nil {
 		switch strings.ToLower(strings.TrimSpace(probe.OutputConfig.Effort)) {
-		case "low":
+		case "minimal", "low":
 			return "low"
 		case "medium":
 			return "medium"

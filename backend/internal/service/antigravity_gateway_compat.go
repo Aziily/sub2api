@@ -2,6 +2,8 @@ package service
 
 import (
 	"bufio"
+	"bytes"
+	"io"
 	"context"
 	"encoding/json"
 	"errors"
@@ -12,6 +14,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -242,6 +245,44 @@ func (s *AntigravityGatewayService) forwardAntigravityCompat(
 		return nil, s.handleAntigravityCompatTransportError(c, err)
 	}
 
+	if result.resp != nil &&
+		result.resp.StatusCode == http.StatusBadRequest &&
+		bytes.Contains(call.geminiBody, []byte(`"thoughtSignature"`)) {
+		cleanedBody := CleanGeminiNativeThoughtSignatures(call.geminiBody)
+		if !bytes.Equal(cleanedBody, call.geminiBody) {
+			firstErrBody := s.readUpstreamErrorBody(result.resp)
+			_ = result.resp.Body.Close()
+			logger.LegacyPrintf("service.antigravity_gateway", "Antigravity compat account %d: retrying 400 with cleaned thought signatures", account.ID)
+			retryResult, retryErr := s.antigravityRetryLoop(antigravityRetryLoopParams{
+				ctx:             ctx,
+				prefix:          call.prefix,
+				account:         account,
+				proxyURL:        call.proxyURL,
+				accessToken:     call.accessToken,
+				action:          "streamGenerateContent",
+				body:            cleanedBody,
+				c:               c,
+				httpUpstream:    s.httpUpstream,
+				settingService:  s.settingService,
+				accountRepo:     s.accountRepo,
+				handleError:     s.handleUpstreamError,
+				requestedModel:  request.originalModel,
+				isStickySession: false,
+				groupID:         0,
+				sessionHash:     "",
+			})
+			if retryErr == nil && retryResult != nil && retryResult.resp != nil {
+				result = retryResult
+			} else {
+				result.resp = &http.Response{
+					StatusCode: http.StatusBadRequest,
+					Header:     http.Header{},
+					Body:       io.NopCloser(bytes.NewReader(firstErrBody)),
+				}
+			}
+		}
+	}
+
 	return s.consumeAntigravityCompatResponse(ctx, c, account, call, result.resp)
 }
 
@@ -254,6 +295,9 @@ func (s *AntigravityGatewayService) prepareAntigravityCompatCall(
 	var claudeRequest antigravity.ClaudeRequest
 	if json.Unmarshal(request.claudeBody, &claudeRequest) != nil {
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", "Invalid request body")
+	}
+	if c != nil && claudeRequest.MaxTokens > 0 {
+		c.Set("antigravity_compat_max_tokens", claudeRequest.MaxTokens)
 	}
 
 	mappedModel := s.getMappedModelForThinkingLevel(
@@ -322,6 +366,7 @@ func (s *AntigravityGatewayService) buildAntigravityCompatGeminiBody(
 			return nil, err
 		}
 		body = ensureGeminiFunctionCallThoughtSignatures(body)
+		body = applyGeminiCompatThinkingConfig(body, claudeBody, mappedModel, claudeRequest != nil && claudeRequest.Stream)
 		body, err = injectIdentityPatchToGeminiRequest(body)
 		if err != nil {
 			return nil, err
@@ -593,6 +638,7 @@ func (s *AntigravityGatewayService) writeMappedAntigravityCompatError(
 		UpstreamRequestID:  upstreamRequestID,
 		Kind:               "http_error",
 		Message:            message,
+		Detail:             s.getUpstreamErrorDetail(body),
 	})
 	c.JSON(mapUpstreamStatusCode(upstreamStatus), gin.H{
 		"error": gin.H{

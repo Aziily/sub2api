@@ -779,7 +779,7 @@ func logPrefix(sessionID, accountName string) string {
 
 func (s *AntigravityGatewayService) shouldFailoverUpstreamError(statusCode int) bool {
 	switch statusCode {
-	case 401, 403, 429, 529:
+	case 401, 403, 404, 429, 529:
 		return true
 	default:
 		return statusCode >= 500
@@ -992,13 +992,24 @@ func parseAntigravitySmartRetryInfo(body []byte) *antigravitySmartRetryInfo {
 					modelName = normalizeAntigravityModelName(model)
 				}
 			}
-			// 检查 reason
+			// 检查 reason（含配额耗尽 QUOTA_EXHAUSTED，避免对已耗尽周期配额做无意义重试）
 			if reason, ok := dm["reason"].(string); ok {
 				if reason == googleRPCReasonModelCapacityExhausted {
 					hasModelCapacityExhausted = true
 				}
-				if reason == googleRPCReasonRateLimitExceeded {
+				if reason == googleRPCReasonRateLimitExceeded || reason == googleRPCReasonQuotaExhausted {
 					hasRateLimitExceeded = true
+				}
+			}
+			if retryDelay <= 0 {
+				if meta, ok := dm["metadata"].(map[string]any); ok {
+					if tsStr, ok := meta["quotaResetTimeStamp"].(string); ok && tsStr != "" {
+						if resetTime, err := time.Parse(time.RFC3339, tsStr); err == nil {
+							if until := time.Until(resetTime); until > 0 {
+								retryDelay = until
+							}
+						}
+					}
 				}
 			}
 			continue
@@ -1236,6 +1247,10 @@ func (s *AntigravityGatewayService) handleUpstreamError(
 		if logBody, maxBytes := s.getLogConfig(); logBody {
 			logger.LegacyPrintf("service.antigravity_gateway", "[Antigravity-Debug] 429 response body: %s", truncateString(string(body), maxBytes))
 		}
+		if isBareAntigravityPromptRejection429(body) {
+			logger.LegacyPrintf("service.antigravity_gateway", "%s status=429 bare_resource_exhausted_skip_account_cooldown account=%d", prefix, account.ID)
+			return nil
+		}
 
 		resetAt := ParseGeminiRateLimitResetTime(body)
 		defaultDur := s.getDefaultRateLimitDuration()
@@ -1300,4 +1315,20 @@ func (s *AntigravityGatewayService) resolveResetTime(resetAt *int64, defaultDur 
 		return time.Unix(*resetAt, 0)
 	}
 	return time.Now().Add(defaultDur)
+}
+
+func isBareAntigravityPromptRejection429(body []byte) bool {
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return false
+	}
+	errObj, ok := payload["error"].(map[string]any)
+	if !ok {
+		return false
+	}
+	if details, hasDetails := errObj["details"]; hasDetails && details != nil {
+		return false
+	}
+	msg, _ := errObj["message"].(string)
+	return strings.Contains(strings.ToLower(msg), "resource has been exhausted")
 }

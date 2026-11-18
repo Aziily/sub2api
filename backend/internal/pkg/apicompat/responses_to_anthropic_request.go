@@ -216,25 +216,34 @@ func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMess
 				systemParts = append(systemParts, text)
 			}
 
-		case item.Type == "function_call":
-			// function_call → assistant message with tool_use block
-			input := json.RawMessage("{}")
-			if item.Arguments != "" {
-				input = json.RawMessage(item.Arguments)
+		case item.Type == "function_call" || item.Type == "custom_tool_call":
+			// function_call / custom_tool_call → assistant message with tool_use block
+			name := strings.TrimSpace(item.Name)
+			if name == "" {
+				continue
 			}
+			rawArgs := item.Arguments
+			if rawArgs == "" && item.Type == "custom_tool_call" {
+				wrapped, _ := json.Marshal(map[string]string{"input": item.Input})
+				rawArgs = string(wrapped)
+			}
+			input := json.RawMessage(normalizeToolCallArgumentsJSONObject(rawArgs))
 			block := AnthropicContentBlock{
 				Type:  "tool_use",
 				ID:    fromResponsesCallIDToAnthropic(item.CallID),
-				Name:  item.Name,
+				Name:  name,
 				Input: input,
 			}
-			blockJSON, _ := json.Marshal([]AnthropicContentBlock{block})
+			blockJSON, err := json.Marshal([]AnthropicContentBlock{block})
+			if err != nil {
+				continue
+			}
 			messages = append(messages, AnthropicMessage{
 				Role:    "assistant",
 				Content: blockJSON,
 			})
 
-		case item.Type == "function_call_output":
+		case item.Type == "function_call_output" || item.Type == "custom_tool_call_output":
 			// function_call_output → user message with tool_result block
 			contentJSON := responsesFunctionOutputToAnthropicContent(item)
 			block := AnthropicContentBlock{

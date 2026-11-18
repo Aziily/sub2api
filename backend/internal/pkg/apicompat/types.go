@@ -276,10 +276,11 @@ type ResponsesInputItem struct {
 	// type=reasoning (multi-turn replay of encrypted reasoning)
 	EncryptedContent string `json:"encrypted_content,omitempty"`
 
-	// type=function_call
+	// type=function_call / custom_tool_call
 	CallID    string `json:"call_id,omitempty"`
 	Name      string `json:"name,omitempty"`
 	Arguments string `json:"arguments,omitempty"`
+	Input     string `json:"input,omitempty"`
 	ID        string `json:"id,omitempty"`
 
 	// type=function_call_output
@@ -721,8 +722,9 @@ type ChatFile struct {
 
 // ChatTool describes a tool available to the model.
 type ChatTool struct {
-	Type     string        `json:"type"` // "function" | "web_search" | "code_execution" | "x_search"
-	Function *ChatFunction `json:"function,omitempty"`
+	Type     string          `json:"type"` // "function" | "custom" | "web_search" | "code_execution" | "x_search"
+	Function *ChatFunction   `json:"function,omitempty"`
+	Custom   *ChatCustomTool `json:"custom,omitempty"`
 
 	// type=x_search
 	AllowedXHandles          []string `json:"allowed_x_handles,omitempty"`
@@ -741,13 +743,27 @@ type ChatFunction struct {
 	Strict      *bool           `json:"strict,omitempty"`
 }
 
+// ChatCustomTool describes an OpenAI custom/freeform tool definition in Chat Completions.
+type ChatCustomTool struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	Format      json.RawMessage `json:"format,omitempty"`
+}
+
+// ChatCustomToolCall contains the name and raw input of a custom/freeform tool call.
+type ChatCustomToolCall struct {
+	Name  string `json:"name,omitempty"`
+	Input string `json:"input,omitempty"`
+}
+
 // ChatToolCall represents a tool call made by the assistant.
 // Index is only populated in streaming chunks (omitted in non-streaming responses).
 type ChatToolCall struct {
-	Index    *int             `json:"index,omitempty"`
-	ID       string           `json:"id,omitempty"`
-	Type     string           `json:"type,omitempty"` // "function"
-	Function ChatFunctionCall `json:"function"`
+	Index    *int                `json:"index,omitempty"`
+	ID       string              `json:"id,omitempty"`
+	Type     string              `json:"type,omitempty"` // "function" | "custom"
+	Function ChatFunctionCall    `json:"function"`
+	Custom   *ChatCustomToolCall `json:"custom,omitempty"`
 }
 
 // ChatFunctionCall contains the function name and arguments.

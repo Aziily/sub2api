@@ -176,7 +176,7 @@ func cleanJSONSchemaRecursive(value any) any {
 	// 2. [FIX] 处理 anyOf/oneOf 联合类型: 合并属性而非直接删除
 	var unionArray []any
 	typeStr, _ := schemaMap["type"].(string)
-	if typeStr == "" || typeStr == "object" {
+	if typeStr == "" || strings.EqualFold(typeStr, "object") {
 		if anyOf, ok := schemaMap["anyOf"].([]any); ok {
 			unionArray = anyOf
 		} else if oneOf, ok := schemaMap["oneOf"].([]any); ok {
@@ -376,24 +376,15 @@ func cleanJSONSchemaRecursive(value any) any {
 			}
 		}
 
-		// 8. [SAFETY] 处理缺失 items 的 Array (Gemini 严苛要求 array 必须声明 items Schema)
+		// 8. Gemini 只允许 array 携带 items，且 items 必须是非空 Schema 对象。
 		if t, _ := schemaMap["type"].(string); t == "array" {
-			itemsVal, hasItems := schemaMap["items"]
-			needDefaultItems := false
-			if !hasItems || itemsVal == nil {
-				needDefaultItems = true
-			} else if itemsMap, ok := itemsVal.(map[string]any); ok {
-				if len(itemsMap) == 0 {
-					needDefaultItems = true
-				}
-			} else if _, isBool := itemsVal.(bool); isBool {
-				needDefaultItems = true
-			}
-			if needDefaultItems {
+			if items, ok := schemaMap["items"].(map[string]any); !ok || len(items) == 0 {
 				schemaMap["items"] = map[string]any{
 					"type": "string",
 				}
 			}
+		} else {
+			delete(schemaMap, "items")
 		}
 
 		// 9. [SAFETY] Required 字段对齐
@@ -585,16 +576,16 @@ func scoreSchemaOption(val any) int {
 	}
 	typeStr, _ := m["type"].(string)
 
-	if hasKey(m, "properties") || typeStr == "object" {
+	if hasKey(m, "properties") || strings.EqualFold(typeStr, "object") {
 		return 3
 	}
-	if hasKey(m, "items") || typeStr == "array" {
+	if hasKey(m, "items") || strings.EqualFold(typeStr, "array") {
 		return 2
 	}
 	if hasKey(m, "enum") || hasKey(m, "const") {
 		return 1
 	}
-	if typeStr != "" && typeStr != "null" {
+	if typeStr != "" && !strings.EqualFold(typeStr, "null") {
 		return 1
 	}
 	return 0

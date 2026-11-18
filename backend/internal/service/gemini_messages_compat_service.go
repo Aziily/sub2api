@@ -692,7 +692,7 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 			if req.Stream {
 				action = "streamGenerateContent"
 			}
-			fullURL, err := buildVertexGeminiAccountURL(account, mappedModel, action, req.Stream)
+			fullURL, err := buildVertexGeminiAccountURL(account, mappedModel, action, req.Stream, "")
 			if err != nil {
 				return nil, "", err
 			}
@@ -1081,6 +1081,7 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 		ImageCount:                    imageCount,
 		ImageSize:                     imageSize,
 		ImageInputSize:                imageInputSize,
+		UpstreamPriceMultiplier:       VertexUpstreamPriceMultiplier(account, mappedModel, ""),
 	}, nil
 }
 
@@ -1147,6 +1148,8 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 
 	var requestIDHeader string
 	var buildReq func(ctx context.Context) (*http.Request, string, error)
+	// cachedContentLocation 是 Vertex 账号请求引用的显式缓存所在区域，未引用时为空。
+	var cachedContentLocation string
 
 	switch account.Type {
 	case AccountTypeAPIKey:
@@ -1247,8 +1250,9 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 		requestIDHeader = "x-request-id"
 
 	case AccountTypeServiceAccount:
+		cachedContentLocation = geminiCachedContentLocationInBody(body)
 		buildReq = func(ctx context.Context) (*http.Request, string, error) {
-			fullURL, err := buildVertexGeminiAccountURL(account, mappedModel, upstreamAction, useUpstreamStream)
+			fullURL, err := buildVertexGeminiAccountURL(account, mappedModel, upstreamAction, useUpstreamStream, cachedContentLocation)
 			if err != nil {
 				return nil, "", err
 			}
@@ -1618,6 +1622,7 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 		ImageCount:                    imageCount,
 		ImageSize:                     imageSize,
 		ImageInputSize:                imageInputSize,
+		UpstreamPriceMultiplier:       VertexUpstreamPriceMultiplier(account, mappedModel, cachedContentLocation),
 	}, nil
 }
 
@@ -2215,6 +2220,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 	openToolIndex := -1
 	openToolID := ""
 	openToolName := ""
+	var toolBoundary geminiToolCallBoundary
 	var seenToolJSON geminiTextDelta
 
 	reader := newBoundedSSELineReader(resp.Body, s.cfg)
@@ -2282,6 +2288,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 					openToolIndex = -1
 					openToolName = ""
 					seenToolJSON.reset()
+					toolBoundary = geminiToolCallBoundary{}
 				}
 				if openBlockType != "thinking" {
 					if openBlockIndex >= 0 {
@@ -2333,6 +2340,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 					openToolIndex = -1
 					openToolName = ""
 					seenToolJSON.reset()
+					toolBoundary = geminiToolCallBoundary{}
 				}
 
 				delta := seenText.next(text)
@@ -2378,7 +2386,6 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 
 			if fc, ok := part["functionCall"].(map[string]any); ok && fc != nil {
 				name, _ := fc["name"].(string)
-				args := fc["args"]
 				if strings.TrimSpace(name) == "" {
 					name = "tool"
 				}
@@ -2394,7 +2401,8 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 				}
 
 				// If we receive streamed tool args in pieces, keep a single tool block open and emit deltas.
-				if openToolIndex >= 0 && openToolName != name {
+				argsJSONText := geminiToolCallArgsJSON(fc["args"])
+				if openToolIndex >= 0 && toolBoundary.startsNewBlock(openToolName, seenToolJSON.seen.String(), argsJSONText, fc) {
 					writeSSE(c.Writer, "content_block_stop", map[string]any{
 						"type":  "content_block_stop",
 						"index": openToolIndex,
@@ -2402,6 +2410,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 					openToolIndex = -1
 					openToolName = ""
 					seenToolJSON.reset()
+					toolBoundary = geminiToolCallBoundary{}
 				}
 
 				if openToolIndex < 0 {
@@ -2423,21 +2432,8 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 					})
 				}
 
-				argsJSONText := "{}"
-				switch v := args.(type) {
-				case nil:
-					// keep default "{}"
-				case string:
-					if strings.TrimSpace(v) != "" {
-						argsJSONText = v
-					}
-				default:
-					if b, err := json.Marshal(args); err == nil && len(b) > 0 {
-						argsJSONText = string(b)
-					}
-				}
-
 				delta := seenToolJSON.next(argsJSONText)
+				toolBoundary.observe(fc)
 				if delta != "" {
 					writeSSE(c.Writer, "content_block_delta", map[string]any{
 						"type":  "content_block_delta",
@@ -3582,8 +3578,9 @@ func convertClaudeMessagesToGeminiContents(messages any, toolUseIDToName map[str
 		droppedThinking := false
 		switch content := mm["content"].(type) {
 		case string:
-			// 字符串形式的 content，保留所有内容（包括空白）
-			parts = append(parts, map[string]any{"text": content})
+			if len(arr) == 1 || strings.TrimSpace(content) != "" {
+				parts = append(parts, map[string]any{"text": content})
+			}
 		case []any:
 			// 如果只有一个 block，不过滤空白（让上游 API 报错）
 			singleBlock := len(content) == 1
@@ -3612,7 +3609,11 @@ func convertClaudeMessagesToGeminiContents(messages any, toolUseIDToName map[str
 				case "tool_use":
 					id, _ := bm["id"].(string)
 					name, _ := bm["name"].(string)
-					if strings.TrimSpace(id) != "" && strings.TrimSpace(name) != "" {
+					name = strings.TrimSpace(name)
+					if name == "" {
+						continue
+					}
+					if strings.TrimSpace(id) != "" {
 						toolUseIDToName[id] = name
 					}
 					signature, _ := bm["signature"].(string)
@@ -3620,11 +3621,15 @@ func convertClaudeMessagesToGeminiContents(messages any, toolUseIDToName map[str
 					if signature == "" {
 						signature = geminiDummyThoughtSignature
 					}
+					argsObj := map[string]any{}
+					if inMap, ok := bm["input"].(map[string]any); ok && inMap != nil {
+						argsObj = inMap
+					}
 					parts = append(parts, map[string]any{
 						"thoughtSignature": signature,
 						"functionCall": map[string]any{
 							"name": name,
-							"args": bm["input"],
+							"args": argsObj,
 						},
 					})
 				case "tool_result":
@@ -3648,7 +3653,7 @@ func convertClaudeMessagesToGeminiContents(messages any, toolUseIDToName map[str
 						toolImageParts = append(toolImageParts, images...)
 					}
 					parts = append(parts, map[string]any{"functionResponse": response})
-				case "image":
+				case "image", "document":
 					if src, ok := bm["source"].(map[string]any); ok {
 						if srcType, _ := src["type"].(string); srcType == "base64" {
 							mediaType, _ := src["media_type"].(string)
@@ -3674,11 +3679,23 @@ func convertClaudeMessagesToGeminiContents(messages any, toolUseIDToName map[str
 		default:
 			// ignore
 		}
-		// 只含思考块的消息去掉思考后为空，整条跳过（Gemini 拒收空 parts）。
-		if droppedThinking && len(parts) == 0 {
+		// 空 parts 消息整条跳过（Gemini 拒收空 parts）。
+		if (droppedThinking && len(parts) == 0) || (len(parts) == 0 && len(arr) > 1) {
 			continue
 		}
-
+		if gRole == "user" && len(parts) > 1 {
+			var fnParts, otherParts []any
+			for _, pt := range parts {
+				if pm, ok := pt.(map[string]any); ok && pm["functionResponse"] != nil {
+					fnParts = append(fnParts, pt)
+				} else {
+					otherParts = append(otherParts, pt)
+				}
+			}
+			if len(fnParts) > 0 && len(otherParts) > 0 {
+				parts = append(fnParts, otherParts...)
+			}
+		}
 		out = append(out, map[string]any{
 			"role":  gRole,
 			"parts": parts,
