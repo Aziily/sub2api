@@ -14,6 +14,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/sjson"
 )
 
 // ForwardGemini 转发 Gemini 协议请求
@@ -145,6 +146,16 @@ func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Co
 	}
 
 	injectedBody = ensureGeminiFunctionCallThoughtSignatures(injectedBody)
+
+	if strings.HasPrefix(mappedModel, "gemini-4-neon-") && hasGeminiThinkingVariantSuffix(mappedModel) {
+		// The model ID selects the level; keep includeThoughts but avoid sending
+		// a second potentially incompatible level or budget to Antigravity.
+		for _, key := range []string{"thinkingLevel", "thinkingBudget"} {
+			if cleaned, err := sjson.DeleteBytes(injectedBody, "generationConfig.thinkingConfig."+key); err == nil {
+				injectedBody = cleaned
+			}
+		}
+	}
 
 	// 包装请求
 	wrappedBody, err := s.wrapV1InternalRequest(projectID, mappedModel, injectedBody)

@@ -563,6 +563,16 @@ func (s *BillingService) initFallbackPricing() {
 		SupportsCacheBreakdown: false,
 	}
 
+	// Gemini 4 Neon uses one rate for all thinking levels and implicit caching.
+	s.fallbackPrices["gemini-4-neon"] = &ModelPricing{
+		InputPricePerToken:             3e-6,
+		OutputPricePerToken:            15e-6,
+		CacheReadPricePerToken:         0.15e-6,
+		InputPricePerTokenPriority:     5.4e-6,
+		OutputPricePerTokenPriority:    27e-6,
+		CacheReadPricePerTokenPriority: 0.27e-6,
+	}
+
 	// Gemini 4 Hydrogen (Google AI pricing: $1.50 input / $7.50 output /
 	// $0.075 cached input per MTok; Priority is 1.8x). One rate covers every
 	// prompt length.
@@ -1237,8 +1247,9 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	if strings.Contains(modelLower, "gemini-3.8-flash") || strings.Contains(modelLower, "gemini-3-8-flash") {
 		return s.fallbackPrices["gemini-3.8-flash"]
 	}
-	if normalizeGeminiThinkingTierAlias(lastSegment(strings.TrimSpace(modelLower))) == "gemini-4-carbon" {
-		return s.fallbackPrices["gemini-4-carbon"]
+	switch model := normalizeGeminiThinkingTierAlias(lastSegment(strings.TrimSpace(modelLower))); model {
+	case "gemini-4-carbon", "gemini-4-neon":
+		return s.fallbackPrices[model]
 	}
 	// Cyber 变体不享受 Gemini 4 Argon 的优惠价，必须先于 "gemini-4-argon" 判。
 	if strings.Contains(modelLower, "gemini-4-argon-cyber") {

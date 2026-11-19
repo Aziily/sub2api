@@ -252,3 +252,26 @@ func TestGetMappedModelResolvesBareGeminiModelForAllEntrypoints(t *testing.T) {
 		require.Empty(t, svc.getMappedModel(account, "gemini-9.9-flash"))
 	})
 }
+
+func TestNeonThinkingLevels(t *testing.T) {
+	const model = "gemini-4-neon"
+	levels := []string{"low", "medium", "high", "xhigh"}
+	mapping := map[string]string{model: model}
+	for _, level := range levels {
+		mapping[model+"-"+level] = model+"-"+level
+	}
+	account := newAntigravityAccountWithMapping(mapping)
+	for _, level := range levels {
+		t.Run(level, func(t *testing.T) {
+			native := geminiThinkingLevelFromBody([]byte(`{"generationConfig":{"thinkingConfig":{"thinkingLevel":"`+level+`"}}}`))
+			compatLevel := level
+			if level == "xhigh" { compatLevel = "max" }
+			compat := geminiThinkingLevelFromClaudeBody([]byte(`{"output_config":{"effort":"`+compatLevel+`"}}`))
+			for _, preferred := range []string{native, compat} {
+				got, matched := resolveGeminiThinkingVariantForLevel(account, model, preferred)
+				require.True(t, matched)
+				require.Equal(t, model+"-"+level, got)
+			}
+		})
+	}
+}

@@ -21,7 +21,7 @@ import (
 // 选中的后缀在映射表里不存在时按 high → medium → low → tiered 的顺序降级到存在的变体。
 // 显式映射（裸名本身在 model_mapping 里）始终优先，行为与现在完全一致。
 
-var geminiThinkingVariantSuffixes = []string{"-low", "-medium", "-high", "-tiered"}
+var geminiThinkingVariantSuffixes = []string{"-low", "-medium", "-high", "-xhigh", "-tiered"}
 
 const (
 	geminiThinkingBudgetLowMax    = 1024
@@ -65,6 +65,8 @@ func geminiThinkingLevelFromBody(body []byte) string {
 		return "medium"
 	case "high":
 		return "high"
+	case "xhigh":
+		return "xhigh"
 	}
 	if tc.ThinkingBudget == nil {
 		return "high"
@@ -128,8 +130,10 @@ func geminiThinkingLevelFromClaudeBody(body []byte) string {
 			return "low"
 		case "medium":
 			return "medium"
-		case "high", "xhigh", "max":
+		case "high":
 			return "high"
+		case "xhigh", "max":
+			return "xhigh"
 		}
 	}
 	return geminiThinkingLevelFromClaudeThinking(probe.Thinking)
@@ -164,7 +168,7 @@ func resolveClaudeThinkingVariantForLevel(account *Account, requestedModel, pref
 	if matched && mapped != model && !claudeEffortVariant(model, mapped) {
 		return "", false
 	}
-	if preferred == "" {
+	if preferred == "" || preferred == "xhigh" {
 		preferred = "high"
 	}
 	order := []string{preferred}
@@ -218,7 +222,7 @@ func resolveGeminiThinkingVariantForLevel(account *Account, requestedModel strin
 		return "", false
 	}
 
-	if preferred == "" {
+	if preferred == "" || (preferred == "xhigh" && model != "gemini-4-neon") {
 		preferred = "high"
 	}
 	order := []string{preferred}

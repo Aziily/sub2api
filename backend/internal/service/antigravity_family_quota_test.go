@@ -26,10 +26,12 @@ func TestAntigravityModelRateLimits_SharedFamilies(t *testing.T) {
 		"gemini-4-argon":         "gemini-4-argon-high",
 		"gemini-4-carbon":        "gemini-4-carbon-high",
 		"gemini-4-carbon-low":    "gemini-4-carbon-low",
+		"gemini-4-neon": "gemini-4-neon",
+		"gemini-4-neon-xhigh": "gemini-4-neon-xhigh",
 		"gemini-3-pro-image":     "gemini-3-pro-image",
 	}
 	claude := []string{"claude-opus-5-5-high", "claude-opus-5-5-low", "claude-sonnet-5-5-high", "claude-opus-5-5", "gpt-oss-120b-medium"}
-	gemini := []string{"gemini-3.8-flash", "gemini-4-argon", "gemini-4-carbon", "gemini-4-carbon-low"}
+	gemini := []string{"gemini-3.8-flash", "gemini-4-argon", "gemini-4-carbon", "gemini-4-carbon-low", "gemini-4-neon", "gemini-4-neon-xhigh"}
 	cases := []struct {
 		name      string
 		exhausted string
@@ -37,6 +39,7 @@ func TestAntigravityModelRateLimits_SharedFamilies(t *testing.T) {
 		other     []string
 	}{
 		{name: "Opus exhausts Claude bucket", exhausted: "claude-opus-5-5-high", same: claude, other: gemini},
+		{name: "Neon exhausts Gemini bucket", exhausted: "gemini-4-neon-xhigh", same: gemini, other: claude},
 		{name: "Carbon exhausts Gemini bucket", exhausted: "gemini-4-carbon-high", same: gemini, other: claude},
 	}
 	for _, tc := range cases {

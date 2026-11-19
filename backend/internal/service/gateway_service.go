@@ -1483,7 +1483,13 @@ func collapseAntigravityModelForListing(platform, model string) string {
 	if platform != PlatformAntigravity && platform != PlatformGemini {
 		return model
 	}
-	for _, level := range []string{"low", "medium", "high"} {
+	for _, level := range []string{"low", "medium", "high", "xhigh"} {
+		if model == "gemini-4-neon-"+level {
+			return "gemini-4-neon"
+		}
+		if level == "xhigh" {
+			continue
+		}
 		if model == "claude-opus-5-5-"+level {
 			return "claude-opus-5-5"
 		}

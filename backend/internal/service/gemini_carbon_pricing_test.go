@@ -73,3 +73,16 @@ func TestDefaultPricingIncludesGeminiCarbon(t *testing.T) {
 	require.Equal(t, float64(65536), catalog["gemini-4-carbon"]["max_output_tokens"])
 	require.Equal(t, float64(65536), catalog["gemini-4-carbon"]["max_tokens"])
 }
+
+func TestNeonPricingAcrossThinkingLevels(t *testing.T) {
+	base := &LiteLLMModelPricing{InputCostPerToken: 3e-6, OutputCostPerToken: 15e-6, CacheReadInputTokenCost: 0.15e-6}
+	pricing := &PricingService{pricingData: map[string]*LiteLLMModelPricing{"gemini-4-neon": base}}
+	billing := NewBillingService(&config.Config{}, nil)
+	for _, suffix := range []string{"", "-low", "-medium", "-high", "-xhigh"} {
+		model := "gemini-4-neon"+suffix
+		require.Same(t, base, pricing.GetIdentifiedModelPricing(model))
+		cost, err := billing.CalculateCost(model, UsageTokens{InputTokens: 1_000_000, OutputTokens: 1_000_000, CacheReadTokens: 1_000_000}, 1)
+		require.NoError(t, err)
+		require.InDelta(t, 18.15, cost.TotalCost, 1e-12)
+	}
+}

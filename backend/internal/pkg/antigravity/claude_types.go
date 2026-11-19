@@ -220,6 +220,7 @@ var geminiModels = []modelDef{
 	{ID: "gemini-3.8-flash-low", DisplayName: "Gemini 3.8 Flash Low", CreatedAt: "2026-09-02T00:00:00Z", IsReasoning: true},
 	{ID: "gemini-3.8-flash-medium", DisplayName: "Gemini 3.8 Flash Medium", CreatedAt: "2026-09-02T00:00:00Z", IsReasoning: true},
 	{ID: "gemini-3.8-flash-tiered", DisplayName: "Gemini 3.8 Flash", CreatedAt: "2026-09-02T00:00:00Z", IsReasoning: true},
+	{ID: "gemini-4-neon", DisplayName: "Gemini 4 Neon", CreatedAt: "2026-11-18T00:00:00Z", IsReasoning: true},
 	{ID: "gemini-4-carbon", DisplayName: "Gemini 4 Carbon", CreatedAt: "2026-11-10T00:00:00Z", IsReasoning: true},
 	{ID: "gemini-4-argon-high", DisplayName: "Gemini 4 Argon (High)", CreatedAt: "2026-10-13T00:00:00Z", IsReasoning: true},
 	{ID: "gemini-4-argon-low", DisplayName: "Gemini 4 Argon (Low)", CreatedAt: "2026-10-13T00:00:00Z", IsReasoning: true},
@@ -296,7 +297,7 @@ func FallbackGeminiModel(model string) GeminiModel {
 // IsGeminiReasoningModel 判断是否为不支持参数和强制 ToolConfig 的 Gemini 推理模型
 func IsGeminiReasoningModel(modelID string) bool {
 	lowerID := strings.ToLower(modelID)
-	if strings.Contains(lowerID, "gemini-pro-agent") || strings.Contains(lowerID, "gemini-4-argon") || strings.Contains(lowerID, "gemini-4-carbon") {
+	if strings.Contains(lowerID, "gemini-pro-agent") || strings.Contains(lowerID, "gemini-4-argon") || strings.Contains(lowerID, "gemini-4-carbon") || strings.Contains(lowerID, "gemini-4-neon") {
 		return true
 	}
 	for _, m := range geminiModels {
