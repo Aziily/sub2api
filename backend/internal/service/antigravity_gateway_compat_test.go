@@ -1328,6 +1328,28 @@ func TestAntigravityCompatEmptyAfterKeepaliveReportsStreamError(t *testing.T) {
 func TestAntigravityCompatGeminiThinkingConfig(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
+	t.Run("Neon xhigh survives Chat Completions conversion", func(t *testing.T) {
+		upstream := &queuedHTTPUpstreamStub{responses: []*http.Response{antigravityCompatSuccessResponse()}}
+		svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, upstream)
+		account := newAntigravityCompatAccount(AccountTypeOAuth)
+		mapping := account.Credentials["model_mapping"].(map[string]any)
+		mapping["gemini-4-neon"] = "gemini-4-neon"
+		mapping["gemini-4-neon-high"] = "gemini-4-neon-high"
+		mapping["gemini-4-neon-xhigh"] = "gemini-4-neon-xhigh"
+
+		body := []byte(`{"model":"gemini-4-neon","reasoning_effort":"xhigh","messages":[{"role":"user","content":"quick check"}]}`)
+		c, recorder := newAntigravityCompatContext(http.MethodPost, "/v1/chat/completions", body)
+		result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, nil)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, recorder.Code)
+		require.Len(t, upstream.requestBodies, 1)
+		require.Equal(t, "gemini-4-neon-xhigh", gjson.GetBytes(upstream.requestBodies[0], "model").String())
+		require.Equal(t, "gemini-4-neon-xhigh", result.UpstreamModel)
+		cfg := gjson.GetBytes(upstream.requestBodies[0], "request.generationConfig.thinkingConfig")
+		require.False(t, cfg.Get("thinkingLevel").Exists())
+		require.False(t, cfg.Get("thinkingBudget").Exists())
+	})
+
 	t.Run("streaming responses tier suffix enables includeThoughts without thinkingLevel", func(t *testing.T) {
 		upstream := &queuedHTTPUpstreamStub{responses: []*http.Response{antigravityCompatSuccessResponse()}}
 		svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, upstream)

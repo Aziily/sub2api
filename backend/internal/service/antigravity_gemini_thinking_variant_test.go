@@ -150,7 +150,7 @@ func TestGeminiThinkingLevelFromClaudeBodyUsesOutputEffort(t *testing.T) {
 		want   string
 	}{
 		{"low", "low"}, {"medium", "medium"}, {"high", "high"},
-		{"xhigh", "high"}, {"max", "high"},
+		{"xhigh", "xhigh"}, {"max", "xhigh"},
 	} {
 		t.Run(tc.effort, func(t *testing.T) {
 			body := []byte(`{"model":"claude-opus-5-5","thinking":{"type":"adaptive"},"output_config":{"effort":"` + tc.effort + `"}}`)
@@ -171,6 +171,7 @@ func TestClaudeThinkingVariantMapsCanonicalOpusByEffort(t *testing.T) {
 		{"low", "claude-opus-5-5-low"},
 		{"medium", "claude-opus-5-5-medium"},
 		{"high", "claude-opus-5-5-high"},
+		{"xhigh", "claude-opus-5-5-high"},
 	} {
 		t.Run(tc.level, func(t *testing.T) {
 			require.Equal(t, tc.want, svc.getMappedModelForThinkingLevel(account, "claude-opus-5-5", tc.level))
@@ -258,15 +259,17 @@ func TestNeonThinkingLevels(t *testing.T) {
 	levels := []string{"low", "medium", "high", "xhigh"}
 	mapping := map[string]string{model: model}
 	for _, level := range levels {
-		mapping[model+"-"+level] = model+"-"+level
+		mapping[model+"-"+level] = model + "-" + level
 	}
 	account := newAntigravityAccountWithMapping(mapping)
 	for _, level := range levels {
 		t.Run(level, func(t *testing.T) {
-			native := geminiThinkingLevelFromBody([]byte(`{"generationConfig":{"thinkingConfig":{"thinkingLevel":"`+level+`"}}}`))
+			native := geminiThinkingLevelFromBody([]byte(`{"generationConfig":{"thinkingConfig":{"thinkingLevel":"` + level + `"}}}`))
 			compatLevel := level
-			if level == "xhigh" { compatLevel = "max" }
-			compat := geminiThinkingLevelFromClaudeBody([]byte(`{"output_config":{"effort":"`+compatLevel+`"}}`))
+			if level == "xhigh" {
+				compatLevel = "max"
+			}
+			compat := geminiThinkingLevelFromClaudeBody([]byte(`{"output_config":{"effort":"` + compatLevel + `"}}`))
 			for _, preferred := range []string{native, compat} {
 				got, matched := resolveGeminiThinkingVariantForLevel(account, model, preferred)
 				require.True(t, matched)
